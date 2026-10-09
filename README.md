@@ -45,6 +45,8 @@ uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```bash
 pytest -q
 node --check frontend/dist/assets/app.js
+# 可选联网验收：临时数据库，不执行真实平台发文
+python -m scripts.verify_rss_workflow
 ```
 
 当前产品不是交易机器人。自动化采集与发布依赖来源授权、平台套餐和接口能力；X 最近搜索不等同于流式全量采集，默认轮询间隔为 60 秒。
