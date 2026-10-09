@@ -48,3 +48,5 @@ node --check frontend/dist/assets/app.js
 ```
 
 当前产品不是交易机器人。自动化采集与发布依赖来源授权、平台套餐和接口能力；X 最近搜索不等同于流式全量采集，默认轮询间隔为 60 秒。
+
+当前指定方案：服务器现有 Nginx + auto-post.maxson.cc + SiliconFlow GLM，见 [专项部署说明](docs/NGINX-SILICONFLOW.md)。X、RSS、Telegram 暂未提供，默认来源列表为空。

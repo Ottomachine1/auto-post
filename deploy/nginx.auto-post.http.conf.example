@@ -1,0 +1,13 @@
+# Bootstrap HTTP configuration for issuing a TLS certificate.
+# After certbot succeeds, use its generated HTTPS config or the HTTPS template.
+server {
+    listen 80;
+    server_name auto-post.maxson.cc;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}

@@ -57,3 +57,5 @@ chmod 600 backups/atlas-backup.db
 更新前记录当前 Git commit 并备份数据库。`git pull --ff-only` 后运行测试并 `docker compose up -d --build`。回滚可检出原 commit 并重建，勿执行 `docker compose down -v`，该参数删除数据卷。未来有破坏性数据库迁移时必须先增加迁移与回滚方案。
 
 发送结果 unknown 代表平台可能已经收到，必须到平台核验；服务不自动重发。failed 也不自动重试；当前需要人工处理并根据确认结果决定是否新建草稿。新建草稿不是远端幂等保证，必须防止人工重复发布。
+
+当前指定方案：服务器现有 Nginx + auto-post.maxson.cc + SiliconFlow GLM，见 [专项部署说明](NGINX-SILICONFLOW.md)。X、RSS、Telegram 暂未提供，默认来源列表为空。
