@@ -78,13 +78,13 @@ python -m scripts.verify_rss_workflow
 
 ## 备份
 
-使用 SQLite 在线备份 API，不在运行期间仅复制 db 文件（WAL 中可能还有数据）。例如：
+以下命令用于当前指定的现有 Nginx 部署，在项目根目录执行。使用 SQLite 在线备份 API，不在运行期间仅复制 db 文件（WAL 中可能还有数据）。若实际使用其他 Compose 项目，请改成对应项目名与配置文件。
 
 ```bash
 mkdir -p backups
 chmod 700 backups
-docker compose exec -T app python -c "import sqlite3; a=sqlite3.connect('/data/intelligence.db'); b=sqlite3.connect('/data/backup.db'); a.backup(b); b.close(); a.close()"
-docker compose cp app:/data/backup.db backups/atlas-backup.db
+docker compose -p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory . exec -T app python -c "import sqlite3; a=sqlite3.connect('/data/intelligence.db'); b=sqlite3.connect('/data/backup.db'); a.backup(b); b.close(); a.close()"
+docker compose -p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory . cp app:/data/backup.db backups/atlas-backup.db
 chmod 600 backups/atlas-backup.db
 ```
 
@@ -92,7 +92,7 @@ chmod 600 backups/atlas-backup.db
 
 ## 更新与回滚
 
-更新前记录当前 Git commit 并备份数据库。`git pull --ff-only` 后运行测试并 `docker compose up -d --build`。回滚可检出原 commit 并重建，勿执行 `docker compose down -v`，该参数删除数据卷。未来有破坏性数据库迁移时必须先增加迁移与回滚方案。
+更新前记录当前 Git commit 并备份数据库。`git pull --ff-only` 后运行必要检查，并执行 `docker compose -p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory . up -d --build`。回滚可检出原 commit 并重建，勿执行 `docker compose down -v`，该参数删除数据卷。未来有破坏性数据库迁移时必须先增加迁移与回滚方案。
 
 发送结果 unknown 代表平台可能已经收到，必须到平台核验；服务不自动重发。failed 也不自动重试；当前需要人工处理并根据确认结果决定是否新建草稿。新建草稿不是远端幂等保证，必须防止人工重复发布。
 

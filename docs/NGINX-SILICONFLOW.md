@@ -44,3 +44,5 @@ certbot certonly --webroot -w /var/www/letsencrypt -d auto-post.maxson.cc
 ## 回滚与续期
 
 应用更新前备份数据库及当前 Git SHA；Nginx 配置变更失败时恢复此前文件并 `nginx -t`。已有反向代理方案使用显式 `-p signal-atlas` 固定数据卷归属，不混用默认 Compose 项目名。检查 Certbot 自动续期定时器与 Nginx 重载机制；Origin Certificate 则按其有效期单独维护。
+
+若 8090 已占用，在服务器 `.env` 修改 `APP_PORT`，并同步修改 Nginx 模板的 `proxy_pass` 及健康检查/隧道访问端口；不要仅改变容器端口而保留代理指向旧端口。
