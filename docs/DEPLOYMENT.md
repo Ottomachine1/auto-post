@@ -36,17 +36,55 @@ docker compose ps
 
 可以在受限网络使用独立 HTTP 端口调试布局；公网管理接口应先配置域名与 HTTPS 再发送管理令牌和发文请求。不要通过未加密公网 HTTP 输入访问令牌。也可以使用 SSH 隧道将服务器本地端口映射到你的本机浏览器。
 
-现有反向代理环境可用 `deploy/compose.existing-proxy.yaml`，仅绑定服务器 loopback 端口 8090，再由现有 HTTPS 代理转发，避免抢占 80/443。
+现有反向代理环境或尚无域名时可用 `deploy/compose.existing-proxy.yaml`，仅绑定服务器 loopback 端口 8090，避免抢占 80/443。`APP_PORT` 可改为检查后确认空闲的端口，配置包含应用健康检查。
+
+SSH 可达后，先执行以下只读检查；输出可能含已有站点名称，保存时注意访问控制：
+
+```bash
+cat /etc/os-release
+uname -m
+df -h
+ss -lntp
+docker version
+docker compose version
+docker ps --format '{{.Names}} {{.Ports}} {{.Status}}'
+systemctl --no-pager --type=service --state=running
+```
+
+确认 8090 未占用后，在克隆与配置 `.env` 完成的项目目录执行（明确项目名以隔离其他服务）：
+
+```bash
+APP_PORT=8090 docker compose -p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory . config --quiet
+APP_PORT=8090 docker compose -p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory . up -d --build
+docker compose -p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory . ps
+curl --fail http://127.0.0.1:8090/api/health
+```
+
+不要启动默认 Compose 的 Caddy，除非确认现有 80/443 未占用并具备域名。无域名时，在自己的电脑建立隧道：
+
+```bash
+ssh -N -L 18090:127.0.0.1:8090 -p 14876 root@223.254.148.90
+```
+
+浏览器打开 `http://127.0.0.1:18090`，后端地址留空。此时访问经过 SSH 加密隧道；无需开放服务器 8090 公网端口。更新、备份、回滚时也必须使用同一个 `-p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory .`，否则可能操作错误项目或数据卷。
+
+## 构建环境的真实 RSS 验收
+
+```bash
+python -m scripts.verify_rss_workflow
+```
+
+脚本使用临时数据库和临时管理令牌，实际请求 `RSS_URLS`（未设置则使用 CoinDesk 和 BBC World），验证来源健康、去重、人工草稿、审核门槛、人工渠道状态、审计及模型未配置时的阻断。脚本在自己的进程中清除模型和平台凭据，不执行真实外部发文，不读取部署数据库。成功不代表目标服务器能访问来源，也不代表已完成公网部署。执行记录见 [本次验证报告](VERIFICATION-2026-10-10.md)。
 
 ## 备份
 
-使用 SQLite 在线备份 API，不在运行期间仅复制 db 文件（WAL 中可能还有数据）。例如：
+以下命令用于当前指定的现有 Nginx 部署，在项目根目录执行。使用 SQLite 在线备份 API，不在运行期间仅复制 db 文件（WAL 中可能还有数据）。若实际使用其他 Compose 项目，请改成对应项目名与配置文件。
 
 ```bash
 mkdir -p backups
 chmod 700 backups
-docker compose exec -T app python -c "import sqlite3; a=sqlite3.connect('/data/intelligence.db'); b=sqlite3.connect('/data/backup.db'); a.backup(b); b.close(); a.close()"
-docker compose cp app:/data/backup.db backups/atlas-backup.db
+docker compose -p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory . exec -T app python -c "import sqlite3; a=sqlite3.connect('/data/intelligence.db'); b=sqlite3.connect('/data/backup.db'); a.backup(b); b.close(); a.close()"
+docker compose -p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory . cp app:/data/backup.db backups/atlas-backup.db
 chmod 600 backups/atlas-backup.db
 ```
 
@@ -54,7 +92,7 @@ chmod 600 backups/atlas-backup.db
 
 ## 更新与回滚
 
-更新前记录当前 Git commit 并备份数据库。`git pull --ff-only` 后运行测试并 `docker compose up -d --build`。回滚可检出原 commit 并重建，勿执行 `docker compose down -v`，该参数删除数据卷。未来有破坏性数据库迁移时必须先增加迁移与回滚方案。
+更新前记录当前 Git commit 并备份数据库。`git pull --ff-only` 后运行必要检查，并执行 `docker compose -p signal-atlas -f deploy/compose.existing-proxy.yaml --project-directory . up -d --build`。回滚可检出原 commit 并重建，勿执行 `docker compose down -v`，该参数删除数据卷。未来有破坏性数据库迁移时必须先增加迁移与回滚方案。
 
 发送结果 unknown 代表平台可能已经收到，必须到平台核验；服务不自动重发。failed 也不自动重试；当前需要人工处理并根据确认结果决定是否新建草稿。新建草稿不是远端幂等保证，必须防止人工重复发布。
 
