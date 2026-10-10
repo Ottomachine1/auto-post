@@ -1,11 +1,11 @@
-# External MySQL only. Use after offline transfer and CA verification.
+# External MySQL only. Use after verified offline transfer and explicit identity trust.
 name: auto-post
 services:
   api:
     image: auto-post-api:${RELEASE_TAG:?Set RELEASE_TAG}
     env_file: ../.env
     ports: ['127.0.0.1:8090:8080']
-    volumes: [keys:/keys, '${MYSQL_CA_DIR:-/mnt/storage/auto-post/private/mysql-ca}:/mysql-ca:ro']
+    volumes: [keys:/keys]
     restart: unless-stopped
     mem_limit: 384m
     security_opt: [no-new-privileges:true]
@@ -14,7 +14,9 @@ services:
   worker:
     image: auto-post-worker:${RELEASE_TAG:?Set RELEASE_TAG}
     env_file: ../.env
-    volumes: ['${MYSQL_CA_DIR:-/mnt/storage/auto-post/private/mysql-ca}:/mysql-ca:ro']
+    environment:
+      X_OAUTH_STATE_PATH: /oauth/x.json
+    volumes: [oauth:/oauth]
     restart: unless-stopped
     mem_limit: 384m
     security_opt: [no-new-privileges:true]
@@ -24,10 +26,15 @@ services:
     image: auto-post-tools:${RELEASE_TAG:?Set RELEASE_TAG}
     env_file: ../.env
     command: [migrate]
-    volumes: ['${MYSQL_CA_DIR:-/mnt/storage/auto-post/private/mysql-ca}:/mysql-ca:ro']
+    volumes: ['${DATA_ROOT:-/mnt/storage/auto-post/state}/transfer:/transfer']
     profiles: [tools]
     networks: [atlas]
 volumes:
+  oauth:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_ROOT:-/mnt/storage/auto-post/state}/oauth
   keys:
     driver_opts:
       type: none

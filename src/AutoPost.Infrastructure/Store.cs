@@ -106,10 +106,7 @@ public static class Registration
     }
     public static DbContextOptionsBuilder Configure(DbContextOptionsBuilder options, string connection) {
         if (Environment.GetEnvironmentVariable("DATABASE_PROVIDER") != "mysql") return options.UseNpgsql(connection);
-        var config = new MySql.Data.MySqlClient.MySqlConnectionStringBuilder(connection);
-        if (config.Server is not ("127.0.0.1" or "localhost" or "::1") && config.SslMode is not (MySql.Data.MySqlClient.MySqlSslMode.VerifyCA or MySql.Data.MySqlClient.MySqlSslMode.VerifyFull))
-            throw new InvalidOperationException("远端MySQL必须配置CA证书并启用身份验证");
-        return options.UseMySQL(connection);
+        return options.UseMySql(MySqlIdentity.Create(connection), new MySqlServerVersion(new Version(8, 4, 6)));
     }
     public static string Connection => Environment.GetEnvironmentVariable("DATABASE_URL") ?? "Host=127.0.0.1;Port=55432;Database=autopost;Username=postgres;Password=autopost-local-only";
     public static bool Demo => Environment.GetEnvironmentVariable("APP_MODE") != "live";

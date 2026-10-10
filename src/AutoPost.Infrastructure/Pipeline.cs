@@ -2,7 +2,7 @@ using AutoPost.Core;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using System.Data.Common;
-using MySql.Data.MySqlClient;
+using MySqlConnector;
 
 namespace AutoPost.Infrastructure;
 
@@ -42,7 +42,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
     public async Task<bool> RunOnce(CancellationToken ct, string kind = "analyse")
     {
         // A session lock guarantees one active worker even if a second container starts.
-        await using DbConnection leader = db.MySql ? new MySqlConnection(Registration.Connection) : new NpgsqlConnection(Registration.Connection);
+        await using DbConnection leader = db.MySql ? MySqlIdentity.Create(Registration.Connection) : new NpgsqlConnection(Registration.Connection);
         await leader.OpenAsync(ct);
         var laneLock = kind switch { "collect" => 794122, "analyse" => 794123, "publish" => 794124, "agent" => 794125, "translate" => 794126, _ => throw new ArgumentException("Unknown lane") };
         await using var command = leader.CreateCommand();

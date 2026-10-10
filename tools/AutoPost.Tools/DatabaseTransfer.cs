@@ -24,12 +24,13 @@ internal static class DatabaseTransfer
             foreach(var type in Tables) {
                 var entities=(System.Collections.IEnumerable)JsonSerializer.Deserialize(document[type.Name],typeof(List<>).MakeGenericType(type),Json.Options)!;
                 var id=type.GetProperty("Id")!;
+                var current=(await Read(db,type)).EnumerateArray().ToDictionary(e=>e.GetProperty("id").ToString(),StringComparer.Ordinal);
                 foreach(var row in entities) {
-                    var existing=await db.FindAsync(type,id.GetValue(row));
-                    if(existing!=null) {
+                    var key=id.GetValue(row)!;
+                    if(current.TryGetValue(key.ToString()!,out var existing)) {
                         // EnsureCreated seeds only the default singleton; replace its initial values.
-                        if(type==typeof(Settings)) db.Entry(existing).CurrentValues.SetValues(row);
-                        else if(JsonSerializer.Serialize(existing,type,Json.Options)!=JsonSerializer.Serialize(row,type,Json.Options)) throw new InvalidOperationException("Target has differing rows; use an empty dedicated database.");
+                        if(type==typeof(Settings)) db.Entry((await db.FindAsync(type,key))!).CurrentValues.SetValues(row);
+                        else if(existing.GetRawText()!=JsonSerializer.Serialize(row,type,Json.Options)) throw new InvalidOperationException("Target has differing rows; use an empty dedicated database.");
                     } else db.Add(row);
                 }
                 await db.SaveChangesAsync();db.ChangeTracker.Clear();
@@ -38,7 +39,7 @@ internal static class DatabaseTransfer
         } else document=Json.Read<Dictionary<string,JsonElement>>(await File.ReadAllTextAsync(file));
         var report=new Dictionary<string,object>();
         foreach(var type in Tables) {
-            var target=await Read(db,type);var expected=Canonical(document[type.Name]);var actual=Canonical(target);
+            var target=command=="export-db" ? document[type.Name] : await Read(db,type);var expected=Canonical(document[type.Name]);var actual=Canonical(target);
             if(expected!=actual) throw new InvalidOperationException("Transfer mismatch: "+type.Name);
             report[type.Name]=new {count=target.GetArrayLength(),sha256=Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(actual)))};
         }

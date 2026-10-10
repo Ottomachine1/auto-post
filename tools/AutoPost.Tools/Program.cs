@@ -3,9 +3,9 @@ using AutoPost.Infrastructure;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
-if (args.Length > 0 && args[0] == "mysql-probe") {
-    await using var connection = new MySql.Data.MySqlClient.MySqlConnection(Registration.Connection);
-    try { await connection.OpenAsync(); using var command=connection.CreateCommand(); command.CommandText="SELECT VERSION()"; Console.WriteLine("Connected: " + await command.ExecuteScalarAsync()); command.CommandText="SHOW SESSION STATUS LIKE 'Ssl_cipher'"; using var reader=await command.ExecuteReaderAsync(); while(await reader.ReadAsync()) Console.WriteLine("TLS: " + reader.GetString(1)); }
+if (args.Length > 0 && args[0] is "mysql-probe" or "mysql-inventory") {
+    await using var connection = MySqlIdentity.Create(Registration.Connection);
+    try { await connection.OpenAsync(); using var command=connection.CreateCommand(); command.CommandText="SELECT VERSION()"; Console.WriteLine("Connected: " + await command.ExecuteScalarAsync()); command.CommandText=args[0]=="mysql-inventory" ? "SHOW DATABASES" : "SHOW SESSION STATUS LIKE 'Ssl_cipher'"; using var reader=await command.ExecuteReaderAsync(); while(await reader.ReadAsync()) Console.WriteLine(args[0]=="mysql-inventory" ? reader.GetString(0) : "TLS: " + reader.GetString(1)); }
     catch (Exception ex) { Console.WriteLine("Probe failed: " + ex.GetType().Name + " " + ex.Message.Replace(Registration.Connection,"[redacted]")); Environment.ExitCode=1; }
     return;
 }
