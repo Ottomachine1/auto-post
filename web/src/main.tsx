@@ -42,6 +42,8 @@ import {
 } from "./api";
 import { useRealtime } from "./realtime";
 import "./style.css";
+import {Composer,MediaGrid} from "./Composer";
+import type {Attachment} from "./api";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -198,6 +200,7 @@ function App() {
     getNextPageParam: (p) => p.nextCursor,
     enabled: connected,
   });
+  const [media,setMedia]=useState<Attachment[]>([]),[uploading,setUploading]=useState(false);
   const drafts = useQuery({
     queryKey: ["drafts"],
     queryFn: () => api<Draft[]>("/drafts"),
@@ -252,9 +255,10 @@ function App() {
     }
   }
   function compose(d?: Draft, text = "", event?: EventItem) {
+    setMedia(d?.media || []); setUploading(false);
     setEditing(d || null);
     setContent(d?.content || text);
-    setChannels(d?.channels || ["telegram"]);
+    setChannels(d?.channels || ["x"]);
     setPreview([]);
     if (event) setSelected(event);
     setEditor(true);
@@ -868,7 +872,7 @@ function App() {
                       版本 {d.revision} · {d.channels.join(" / ")}
                     </span>
                   </div>
-                  <p className="draft-text">{d.content}</p>
+                  <p className="draft-text">{d.content}</p><MediaGrid media={d.media||[]}/>
                   {d.deliveries.map((del) => (
                     <div className="delivery" key={del.id}>
                       <span>
@@ -1325,7 +1329,7 @@ function App() {
       </Modal>
       <Modal
         open={editor}
-        onOpen={setEditor}
+        onOpen={v=>{if(!uploading)setEditor(v);}}
         title={editing ? "编辑草稿 · v" + editing.revision : "人工创作"}
         description="修改内容会创建新版本并取消旧审核。平台限制以预览结果为准。"
       >
@@ -1340,6 +1344,7 @@ function App() {
                 {
                   content,
                   channels,
+                  media,
                   eventId: editing?.event_id || selected?.id || null,
                   revision: editing?.revision,
                 },
@@ -1349,45 +1354,15 @@ function App() {
             });
           }}
         >
-          <label>
-            内容
-            <textarea
-              rows={8}
-              required
-              maxLength={10000}
-              value={content}
-              onChange={(e) => {
-                setContent(e.target.value);
-                setPreview([]);
-              }}
-            />
-          </label>
-          <div className="checks">
-            {["x", "telegram", "binance", "okx", "truth"].map((c) => (
-              <label key={c}>
-                <input
-                  type="checkbox"
-                  checked={channels.includes(c)}
-                  onChange={() =>
-                    setChannels(
-                      channels.includes(c)
-                        ? channels.filter((x) => x !== c)
-                        : [...channels, c],
-                    )
-                  }
-                />
-                {c}
-              </label>
-            ))}
-          </div>
+          <Composer content={content} onContent={v=>{setContent(v);setPreview([]);}} media={media} onMedia={v=>{setMedia(v);setPreview([]);}} channels={channels} onChannels={v=>{setChannels(v);setPreview([]);}} disabled={busy||!connected} onUploading={setUploading}/>
           <div className="actions">
             <button
               type="button"
-              disabled={!connected || busy}
+              disabled={!connected || busy || uploading}
               onClick={() =>
                 void action(async () =>
                   setPreview(
-                    await api("/drafts/preview", "POST", { content, channels }),
+                    await api("/drafts/preview", "POST", { content, channels, media }),
                   ),
                 )
               }
@@ -1395,7 +1370,7 @@ function App() {
               分渠道预览
             </button>
             <span className="meta">{content.length} 字符</span>
-            <button className="primary" disabled={busy}>
+            <button className="primary" disabled={busy||uploading||!connected||channels.length===0}>
               保存待审核草稿
             </button>
           </div>

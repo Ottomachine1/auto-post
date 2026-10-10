@@ -1,0 +1,39 @@
+# External MySQL only. Use after offline transfer and CA verification.
+name: auto-post
+services:
+  api:
+    image: auto-post-api:${RELEASE_TAG:?Set RELEASE_TAG}
+    env_file: ../.env
+    ports: ['127.0.0.1:8090:8080']
+    volumes: [keys:/keys, '${MYSQL_CA_DIR:-/mnt/storage/auto-post/private/mysql-ca}:/mysql-ca:ro']
+    restart: unless-stopped
+    mem_limit: 384m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [atlas]
+  worker:
+    image: auto-post-worker:${RELEASE_TAG:?Set RELEASE_TAG}
+    env_file: ../.env
+    volumes: ['${MYSQL_CA_DIR:-/mnt/storage/auto-post/private/mysql-ca}:/mysql-ca:ro']
+    restart: unless-stopped
+    mem_limit: 384m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [atlas]
+  migrate:
+    image: auto-post-tools:${RELEASE_TAG:?Set RELEASE_TAG}
+    env_file: ../.env
+    command: [migrate]
+    volumes: ['${MYSQL_CA_DIR:-/mnt/storage/auto-post/private/mysql-ca}:/mysql-ca:ro']
+    profiles: [tools]
+    networks: [atlas]
+volumes:
+  keys:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_ROOT:-/mnt/storage/auto-post/state}/keys
+networks:
+  atlas:
+    ipam:
+      config: [{subnet: 172.30.86.0/24}]

@@ -37,7 +37,7 @@ var app = builder.Build();
 if (args.Contains("--migrate"))
 {
     using var scope = app.Services.CreateScope();
-    await scope.ServiceProvider.GetRequiredService<Store>().Database.MigrateAsync();
+    await scope.ServiceProvider.GetRequiredService<Store>().Migrate();
     Console.WriteLine("Database migration complete."); return;
 }
 var admin = Connectors.Env("ADMIN_TOKEN");
@@ -47,7 +47,7 @@ app.Use(async (ctx, next) =>
 {
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
     ctx.Response.Headers["Referrer-Policy"] = "no-referrer";
-    ctx.Response.Headers["Content-Security-Policy"] = "default-src 'self'; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'";
+    ctx.Response.Headers["Content-Security-Policy"] = "default-src 'self'; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'; base-uri 'self'";
     if (ctx.Request.Path.StartsWithSegments("/api") || ctx.Request.Path.StartsWithSegments("/hubs")) ctx.Response.Headers.CacheControl = "no-store";
     try { await next(); }
     catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
@@ -78,6 +78,7 @@ app.MapPost("/api/session", async (Login input, HttpContext ctx, IAntiforgery cs
     return Results.Ok(new { ok = true });
 });
 app.MapGet("/api/health", async (Store db) => { var ready = await db.Database.CanConnectAsync(); return Results.Json(new { status = ready ? "ok" : "unavailable", mode = Registration.Demo ? "demo" : "live" }, statusCode: ready ? 200 : 503); });
+app.MapPost("/api/link-preview", async (LinkInput input, IHttpClientFactory factory, CancellationToken ct) => await LinkCards.Read(input.Url,factory,ct)).RequireAuthorization();
 var api = app.MapGroup("/api").RequireAuthorization();
 api.AddEndpointFilter(async (ctx, next) =>
 {
@@ -136,9 +137,10 @@ api.MapGet("/status", async (Store db) => new
     mode = Registration.Demo ? "demo" : "live",
     sources = await db.Sources.ToListAsync(),
     settings = await db.Settings.SingleAsync(),
+    databaseProvider = db.MySql ? "mysql" : "postgres",
     ai_configured = Connectors.Env("OPENAI_API_KEY") != "",
     embedding_configured = Connectors.Env("OPENAI_API_KEY") != "" && Connectors.Env("EMBEDDING_MODEL") != "",
-    channels = Connectors.Channels.Select(c => new { id = c, label = c, mode = c is "x" or "telegram" ? "api" : "manual_export", configured = Connectors.Configured(c) }),
+    channels = Connectors.Channels.Select(c => new { id = c, label = c, mode = c is "x" or "telegram" or "binance" ? "api" : "manual_export", configured = Connectors.Configured(c) }),
     events = await db.Events.CountAsync(e => e.Demo == Registration.Demo),
     queue = await db.Jobs.GroupBy(j => j.Status).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync(),
     usage = await db.Budgets.Where(b => b.Id.EndsWith(Clock.Day)).ToListAsync()
@@ -149,24 +151,35 @@ api.MapPut("/settings", async (SettingsInput input, Store db) =>
     var setting = await db.Settings.SingleAsync(); setting.AutoPaused = input.AutoPaused; setting.AnalysisDailyLimit = input.AnalysisDailyLimit; setting.ChannelDailyLimit = input.ChannelDailyLimit;
     db.Mark("settings", "global"); return Results.Ok(setting);
 });
+api.MapPost("/media", async (MediaInput input, Store db) => {
+    if (input.Data.Length > 7 * 1024 * 1024) throw new ArgumentException("图片应小于5MB");
+    byte[] bytes; try { bytes = Convert.FromBase64String(input.Data); } catch (FormatException) { throw new ArgumentException("图片格式无效"); }
+    var asset = new MediaAsset { ContentType = MediaFiles.Detect(bytes), Data = Convert.ToBase64String(bytes), Size = bytes.Length, Demo = Registration.Demo };
+    db.Media.Add(asset); db.Mark("media_uploaded",asset.Id);
+    return Results.Ok(new { asset.Id, asset.ContentType, asset.Size });
+});
+api.MapGet("/media/{id}", async (string id, Store db) => {
+    var media = await db.Media.SingleOrDefaultAsync(m => m.Id == id && m.Demo == Registration.Demo) ?? throw new ArgumentException("图片不存在");
+    return Results.File(Convert.FromBase64String(media.Data), media.ContentType);
+});
 api.MapGet("/drafts", async (Store db) =>
 {
     var drafts = await db.Drafts.Where(d => d.Demo == Registration.Demo || d.Quarantined).OrderByDescending(d => d.CreatedAt).Take(100).ToListAsync();
     var ids = drafts.Select(d => d.Id).ToArray(); var deliveries = await db.Deliveries.Where(d => ids.Contains(d.DraftId)).ToListAsync();
-    return drafts.Select(d => new { d.Id, d.Content, channels = Json.Read<string[]>(d.Channels), event_id = d.EventId, d.Status, d.Revision, d.ApprovedRevision, d.Demo, d.Quarantined, d.RuleId, d.RuleVersion, created_at = d.CreatedAt, deliveries = deliveries.Where(x => x.DraftId == d.Id) });
+    return drafts.Select(d => new { d.Id, d.Content, media = Json.Read<Attachment[]>(d.MediaJson), channels = Json.Read<string[]>(d.Channels), event_id = d.EventId, d.Status, d.Revision, d.ApprovedRevision, d.Demo, d.Quarantined, d.RuleId, d.RuleVersion, created_at = d.CreatedAt, deliveries = deliveries.Where(x => x.DraftId == d.Id) });
 });
 api.MapPost("/drafts", async (DraftInput input, Store db, Pipeline pipeline) =>
 {
-    ValidateDraft(input);
+    ValidateDraft(input); await MediaFiles.Validate(db, input.Media ?? []);
     if (input.EventId != null && !await db.Events.AnyAsync(e => e.Id == input.EventId && e.Demo == Registration.Demo)) throw new ArgumentException("来源事件不存在");
-    var draft = pipeline.NewDraft(input.Content, input.Channels, input.EventId, Registration.Demo); return Results.Ok(new { draft.Id, draft.Status });
+    var draft = pipeline.NewDraft(input.Content, input.Channels, input.EventId, Registration.Demo, input.Media); return Results.Ok(new { draft.Id, draft.Status });
 });
 api.MapPut("/drafts/{id}", async (string id, DraftInput input, Store db, Pipeline pipeline) =>
 {
-    ValidateDraft(input); var draft = await GetDraft(db, id);
+    ValidateDraft(input); await MediaFiles.Validate(db, input.Media ?? []); var draft = await GetDraft(db, id);
     if (input.Revision != draft.Revision) throw new InvalidOperationException("草稿版本已变化，请刷新");
     if (await db.Deliveries.AnyAsync(d => d.DraftId == id && (d.Status == "sending" || d.Status == "queued" || d.Status == "unknown"))) throw new InvalidOperationException("请先处理正在发送或结果不明的投递");
-    draft.Content = input.Content; draft.Channels = Json.Write(input.Channels); draft.Revision++; draft.ApprovedRevision = null; draft.Status = "draft"; draft.RuleId = null; draft.RuleVersion = null; draft.UpdatedAt = Clock.Now;
+    draft.MediaJson = Json.Write(input.Media ?? []); draft.Content = input.Content; draft.Channels = Json.Write(input.Channels); draft.Revision++; draft.ApprovedRevision = null; draft.Status = "draft"; draft.RuleId = null; draft.RuleVersion = null; draft.UpdatedAt = Clock.Now;
     pipeline.Snapshot(draft); db.Mark("draft_edited", id, "revision=" + draft.Revision); return Results.Ok(draft);
 });
 api.MapGet("/drafts/{id}/versions", async (string id, Store db) => { await GetDraft(db, id); return await db.Versions.Where(v => v.DraftId == id).OrderByDescending(v => v.Revision).ToListAsync(); });
@@ -177,9 +190,9 @@ api.MapPost("/drafts/{id}/approve", async (string id, int? revision, Store db) =
     d.ApprovedRevision = d.Revision; d.Status = "approved"; db.Mark("approved", id, "revision=" + d.Revision); return Results.Ok(new { status = d.Status });
 });
 api.MapPost("/drafts/{id}/publish", async (string id, Store db, Pipeline pipeline) => { var d = await GetDraft(db, id); await pipeline.QueuePublish(d, null, default); return Results.Accepted(value: new { status = "queued" }); });
-api.MapPost("/drafts/preview", (DraftInput input) =>
+api.MapPost("/drafts/preview", async (DraftInput input, Store db) =>
 {
-    ValidateDraft(input); return input.Channels.Select(c => new { channel = c, content = input.Content, error = Connectors.ContentError(c, input.Content), length = c == "x" ? Connectors.XLength(input.Content) : input.Content.EnumerateRunes().Count(), mode = c is "x" or "telegram" ? "api" : "manual_export" });
+    ValidateDraft(input); await MediaFiles.Validate(db, input.Media ?? []); return input.Channels.Select(c => new { channel = c, content = input.Content, error = Connectors.ContentError(c, input.Content, input.Media?.Length>0) ?? MediaFiles.ChannelError(c, input.Media ?? []), length = c == "x" ? Connectors.XLength(input.Content) : input.Content.EnumerateRunes().Count(), mode = c is "x" or "telegram" or "binance" ? "api" : "manual_export" });
 });
 api.MapPost("/deliveries/{id}/retry", async (string id, Store db) =>
 {
@@ -238,12 +251,12 @@ app.MapHub<EventsHub>("/hubs/events").RequireAuthorization();
 app.UseDefaultFiles(); app.UseStaticFiles(); app.MapFallbackToFile("index.html");
 await app.RunAsync();
 
-static IOrderedQueryable<Event> Query(Store db, string? source, string? q, string? category) => db.Events.AsNoTracking().Where(e => e.Demo == Registration.Demo && (source == null || source == "" || e.Source == source) && (category == null || category == "" || e.Category == category) && (q == null || q == "" || EF.Functions.ILike(e.Title, "%" + q + "%") || EF.Functions.ILike(e.Body, "%" + q + "%"))).OrderByDescending(e => e.PublishedAt).ThenByDescending(e => e.Id);
+static IOrderedQueryable<Event> Query(Store db, string? source, string? q, string? category) => db.Events.AsNoTracking().Where(e => e.Demo == Registration.Demo && (source == null || source == "" || e.Source == source) && (category == null || category == "" || e.Category == category) && (q == null || q == "" || e.Title.ToLower().Contains(q.ToLower()) || e.Body.ToLower().Contains(q.ToLower()))).OrderByDescending(e => e.PublishedAt).ThenByDescending(e => e.Id);
 static object EventDto(Event e) => new { e.Id, e.Source, source_id = e.SourceId, e.Title, e.Body, e.Url, e.Category, published_at = e.PublishedAt, collected_at = e.CollectedAt, e.Demo, e.GroupId, e.AnalysisStatus, e.Author, e.Language, e.OriginalSummary, e.Publisher, e.EvidenceKey, e.Relation, e.PublishedEstimated };
 static async Task<Draft> GetDraft(Store db, string id) => await db.Drafts.SingleOrDefaultAsync(d => d.Id == id && (d.Demo == Registration.Demo || d.Quarantined)) ?? throw new ArgumentException("草稿不存在");
 static void ValidateDraft(DraftInput input)
 {
-    if (string.IsNullOrWhiteSpace(input.Content) || input.Content.Length > 10000 || input.Channels.Length is < 1 or > 5 || input.Channels.Any(c => !Connectors.Channels.Contains(c))) throw new ArgumentException("请填写有效内容并选择渠道");
+    if (input.Content == null || string.IsNullOrWhiteSpace(input.Content) && !(input.Media?.Length>0) || input.Content.Length > 10000 || input.Channels.Length is < 1 or > 5 || input.Channels.Any(c => !Connectors.Channels.Contains(c))) throw new ArgumentException("请填写有效内容并选择渠道");
 }
 static object RuleDto(Rule r) => new { r.Id, r.Name, r.Enabled, r.Version, sources = Json.Read<string[]>(r.Sources), keywords = Json.Read<string[]>(r.Keywords), channels = Json.Read<string[]>(r.Channels), r.Account, r.DailyLimit, r.CooldownMinutes, r.StartHour, r.EndHour };
 static void ApplyRule(Rule r, RuleInput input)
@@ -265,7 +278,7 @@ static void ApplySource(Source s, SourceInput input)
     s.Enabled = input.Enabled && !s.EnableAfterValidation; s.IntervalSeconds = input.IntervalSeconds; s.NextRun = Clock.Now;
 }
 public sealed record Login(string Token);
-public sealed record DraftInput(string Content, string[] Channels, string? EventId = null, int? Revision = null);
+public sealed record DraftInput(string Content, string[] Channels, string? EventId = null, int? Revision = null, Attachment[]? Media = null);
 public sealed record SettingsInput(bool AutoPaused, int AnalysisDailyLimit = 100, int ChannelDailyLimit = 20);
 public sealed record RuleInput(string Name, string[] Sources, string[] Keywords, string[] Channels, bool Enabled = false, string Account = "default", int DailyLimit = 10, int CooldownMinutes = 15, int StartHour = 0, int EndHour = 24);
 public sealed record SourceInput(string Kind, string Name, string Address, bool Enabled = false, int IntervalSeconds = 60, string Category = "world", int Priority = 50, string Topic = "", string Language = "en", string Region = "US", string Publisher = "", int FreshnessDays = 30);
@@ -290,3 +303,7 @@ sealed class ChangeRelay(IServiceScopeFactory scopes, IHubContext<EventsHub> hub
     }
 }
 public partial class Program;
+
+public sealed record MediaInput(string Data);
+
+public sealed record LinkInput(string Url);

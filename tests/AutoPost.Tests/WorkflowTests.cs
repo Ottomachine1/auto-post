@@ -14,16 +14,16 @@ public sealed class WorkflowTests : IAsyncLifetime
 {
     private const string Token = "integration-test-token-at-least-32-characters";
     private static readonly string Connection = Environment.GetEnvironmentVariable("TEST_DATABASE_URL") ?? "Host=127.0.0.1;Port=55432;Database=autopost_tests;Username=postgres;Password=autopost-local-only";
-    private Store Db() => new(new DbContextOptionsBuilder<Store>().UseNpgsql(Connection).Options);
+    private Store Db() => new((DbContextOptions<Store>)Registration.Configure(new DbContextOptionsBuilder<Store>(),Connection).Options);
     private readonly HttpClientFactory factory = new();
     public async Task InitializeAsync()
     {
         Environment.SetEnvironmentVariable("DATABASE_URL", Connection); Environment.SetEnvironmentVariable("APP_MODE", "live"); Environment.SetEnvironmentVariable("ADMIN_TOKEN", Token);
         Environment.SetEnvironmentVariable("X_USER_ACCESS_TOKEN", "mock"); Environment.SetEnvironmentVariable("OPENAI_API_KEY", "mock");
-        await using var db = Db(); await db.Database.EnsureDeletedAsync(); await db.Database.MigrateAsync();
+        await using var db = Db(); await db.Database.EnsureDeletedAsync(); await db.Migrate();
     }
     public Task DisposeAsync() => Task.CompletedTask;
-    [Fact] public async Task MigrationIsRepeatable() { await using var db = Db(); await db.Database.MigrateAsync(); Assert.True((await db.Settings.SingleAsync()).AutoPaused); }
+    [Fact] public async Task MigrationIsRepeatable() { await using var db = Db(); await db.Migrate(); Assert.True((await db.Settings.SingleAsync()).AutoPaused); }
     [Theory]
     [InlineData("https://127.0.0.1/rss")]
     [InlineData("https://169.254.169.254/")]
@@ -31,7 +31,7 @@ public sealed class WorkflowTests : IAsyncLifetime
     [InlineData("https://user:pass@example.com/")]
     public void RejectUnsafeRss(string url) => Assert.Throws<InvalidOperationException>(() => Network.Validate(url));
     [Fact] public void CanonicalUrl() => Assert.Equal("https://example.com/article?a=1", Network.Canonical("https://example.com/article?utm_source=x&a=1#part"));
-    [Fact] public void XWeightedLength() { Assert.Equal(4, Connectors.XLength("中文")); Assert.Equal(25, Connectors.XLength("a https://example.com/very/long/path")); Assert.NotNull(Connectors.ContentError("x", new string('中', 141))); }
+    [Fact] public void XWeightedLength() { Assert.Equal(4, Connectors.XLength("中文")); Assert.Equal(2,Connectors.XLength("👨‍👩‍👧‍👦")); Assert.Equal(2,Connectors.XLength("👍🏽")); Assert.Equal(1,Connectors.XLength("e\u0301")); Assert.Equal(25, Connectors.XLength("a https://example.com/very/long/path")); Assert.NotNull(Connectors.ContentError("x", new string('中', 141))); }
     [Fact]
     public void RulesDefaultClosedAndDemoBlocked()
     {
@@ -252,18 +252,71 @@ public sealed class WorkflowTests : IAsyncLifetime
         await new Connectors(factory, db).Collect(source, default);
         var item = await db.Events.SingleAsync(); Assert.Equal("Research Lab", item.Author); Assert.Equal("en", item.Language); Assert.Equal("科技", item.Category); Assert.Equal("New research", item.OriginalSummary);
     }
+    [Fact]
+    public async Task MediaDraftRevisionPreservesImagesAndInvalidatesApproval()
+    {
+        using var app = new WebApplicationFactory<Program>(); using var client = app.CreateClient(); client.DefaultRequestHeaders.Authorization = new("Bearer", Token);
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY9sAAAAASUVORK5CYII=");
+        var uploaded = await client.PostAsJsonAsync("/api/media",new {data=Convert.ToBase64String(png)}); uploaded.EnsureSuccessStatusCode();
+        var media = (await uploaded.Content.ReadFromJsonAsync<IdResult>())!;
+        var created = await client.PostAsJsonAsync("/api/drafts",new {content="Photo",channels=new[]{"x"},media=new[]{new Attachment(media.Id,"描述")}}); created.EnsureSuccessStatusCode();
+        var id = (await created.Content.ReadFromJsonAsync<IdResult>())!.Id;
+        (await client.PostAsync("/api/drafts/"+id+"/approve?revision=1",null)).EnsureSuccessStatusCode();
+        (await client.PutAsJsonAsync("/api/drafts/"+id,new {content="Photo edited",channels=new[]{"x"},revision=1,media=new[]{new Attachment(media.Id,"new")}})).EnsureSuccessStatusCode();
+        await using var db=Db(); var draft=await db.Drafts.SingleAsync(); Assert.Null(draft.ApprovedRevision); Assert.Equal(2,draft.Revision);
+        Assert.Equal("描述",Json.Read<Attachment[]>((await db.Versions.SingleAsync(v=>v.Revision==1)).MediaJson)[0].Alt);
+        Assert.Equal("new",Json.Read<Attachment[]>(draft.MediaJson)[0].Alt);
+        Assert.Equal(png,await client.GetByteArrayAsync("/api/media/"+media.Id));
+    }
+    [Fact]
+    public async Task MediaIsolationAndUnsupportedChannels()
+    {
+        await using var db=Db(); var asset=new MediaAsset {Demo=true};db.Media.Add(asset);await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<ArgumentException>(()=>MediaFiles.Validate(db,[new Attachment(asset.Id)]));
+        Assert.NotNull(MediaFiles.ChannelError("telegram",[new Attachment("id")]));
+        Assert.Throws<ArgumentException>(()=>MediaFiles.Detect(System.Text.Encoding.UTF8.GetBytes("<svg><script>bad</script></svg>")));
+    }
+    [Fact]
+    public async Task BinanceRejectionAndAmbiguousSubmissionNeverSucceed()
+    {
+        Environment.SetEnvironmentVariable("BINANCE_SQUARE_OPENAPI_KEY","mock");await using var db=Db();var connectors=new Connectors(factory,db);
+        factory.Responses.Enqueue("{\"code\":\"220003\",\"message\":\"bad key\"}");
+        await Assert.ThrowsAsync<InvalidOperationException>(()=>connectors.Deliver("binance","hello",default));
+        factory.Status=HttpStatusCode.GatewayTimeout;
+        await Assert.ThrowsAsync<Uncertain>(()=>connectors.Deliver("binance","hello",default));
+        factory.Status=HttpStatusCode.OK;factory.Responses.Enqueue("{\"code\":\"000000\",\"data\":{\"id\":\"123\"}}");
+        Assert.Equal(("published","123"),await connectors.Deliver("binance","hello",default));
+    }
+    [Fact]
+    public async Task XMediaUploadsBeforePostingWithExactText()
+    {
+        await using var db=Db();var asset=new MediaAsset {ContentType="image/png",Data="aGVsbG8="};db.Media.Add(asset);await db.SaveChangesAsync();
+        factory.Responses.Enqueue("{\"data\":{\"id\":\"media1\"}}");factory.Responses.Enqueue("{\"data\":{\"id\":\"post1\"}}");
+        var result=await new Connectors(factory,db).Deliver("x","Exact text https://example.com",default,[new Attachment(asset.Id)]);
+        Assert.Equal("post1",result.Remote);Assert.EndsWith("/2/media/upload",factory.Urls[0]);Assert.EndsWith("/2/tweets",factory.Urls[1]); Assert.Equal("Exact text https://example.com",Json.Read<System.Text.Json.JsonElement>(factory.Bodies[1]).GetProperty("text").GetString());
+    }
+    [Fact]
+    public async Task BinanceImageUploadUsesProcessedUrlAndPreservesText()
+    {
+        Environment.SetEnvironmentVariable("BINANCE_SQUARE_OPENAPI_KEY","mock");await using var db=Db();var asset=new MediaAsset {ContentType="image/png",Data="aGVsbG8="};db.Media.Add(asset);await db.SaveChangesAsync();
+        factory.Responses.Enqueue("{\"code\":\"000000\",\"data\":{\"presignedUrl\":\"https://example.com/upload\",\"fileTicket\":\"ticket1\"}}");
+        factory.Responses.Enqueue("{}");factory.Responses.Enqueue("{\"code\":\"000000\",\"data\":{\"status\":1,\"imageUrl\":\"https://example.com/processed.png\"}}");
+        factory.Responses.Enqueue("{\"code\":\"000000\",\"data\":{\"id\":\"post1\"}}");
+        Assert.Equal("post1",(await new Connectors(factory,db).Deliver("binance","Exact #BTC $BTC",default,[new Attachment(asset.Id)])).Remote);
+        var body=Json.Read<System.Text.Json.JsonElement>(factory.Bodies[3]);Assert.Equal("Exact #BTC $BTC",body.GetProperty("bodyTextOnly").GetString());Assert.Equal("https://example.com/processed.png",body.GetProperty("imageList")[0].GetString());
+    }
     public sealed record IdResult(string Id);
 }
 public sealed class HttpClientFactory : IHttpClientFactory
 {
-    public int Calls; public List<string> Urls { get; } = []; public Queue<string> Responses { get; } = []; public HttpStatusCode Status = HttpStatusCode.OK;
+    public List<string> Bodies { get; } = []; public int Calls; public List<string> Urls { get; } = []; public Queue<string> Responses { get; } = []; public HttpStatusCode Status = HttpStatusCode.OK;
     public HttpClient CreateClient(string name) => new(new Handler(this));
     private sealed class Handler(HttpClientFactory owner) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
-            owner.Calls++; owner.Urls.Add(request.RequestUri!.ToString());
-            return Task.FromResult(new HttpResponseMessage(owner.Status) { Content = new StringContent(owner.Responses.Count > 0 ? owner.Responses.Dequeue() : "{}", System.Text.Encoding.UTF8, "application/json") });
+            owner.Calls++; owner.Urls.Add(request.RequestUri!.ToString()); owner.Bodies.Add(request.Content==null?"":await request.Content.ReadAsStringAsync(ct));
+            return new HttpResponseMessage(owner.Status) { Content = new StringContent(owner.Responses.Count > 0 ? owner.Responses.Dequeue() : "{}", System.Text.Encoding.UTF8, "application/json") };
         }
     }
 }

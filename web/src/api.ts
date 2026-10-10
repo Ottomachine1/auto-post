@@ -86,7 +86,9 @@ export type Delivery = {
   remoteId?: string;
   error?: string;
 };
+export type Attachment = { id:string; alt:string };
 export type Draft = {
+  media?: Attachment[];
   id: string;
   content: string;
   channels: string[];

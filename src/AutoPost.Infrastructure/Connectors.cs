@@ -23,12 +23,13 @@ public sealed partial class Connectors(IHttpClientFactory factory, Store db)
     public static bool Configured(string channel) => channel switch
     {
         "x" => Env("X_USER_ACCESS_TOKEN").Length > 0,
+        "binance" => Env("BINANCE_SQUARE_OPENAPI_KEY").Length > 0,
         "telegram" => Env("TELEGRAM_BOT_TOKEN").Length > 0 && Env("TELEGRAM_CHAT_ID").Length > 0,
         _ => false
     };
-    public static string? ContentError(string channel, string content)
+    public static string? ContentError(string channel, string content, bool hasMedia = false)
     {
-        if (string.IsNullOrWhiteSpace(content)) return "内容不能为空";
+        if (string.IsNullOrWhiteSpace(content) && !(channel == "x" && hasMedia)) return "内容不能为空";
         if (!Channels.Contains(channel)) return "未知渠道";
         if (channel == "x" && XLength(content) > 280) return "X 加权长度超过 280，请编辑内容";
         if (channel == "telegram" && content.EnumerateRunes().Count() > 4096) return "Telegram 内容超过 4096 字符";
@@ -36,8 +37,15 @@ public sealed partial class Connectors(IHttpClientFactory factory, Store db)
     }
     public static int XLength(string text)
     {
+        text = text.Normalize(System.Text.NormalizationForm.FormC);
         var total = Links().Matches(text).Sum(_ => 23);
-        return total + Links().Replace(text, "").EnumerateRunes().Sum(r => r.Value <= 0x10ff || r.Value is >= 0x2000 and <= 0x200d or >= 0x2010 and <= 0x201f or >= 0x2032 and <= 0x2037 ? 1 : 2);
+        var elements = System.Globalization.StringInfo.GetTextElementEnumerator(Links().Replace(text,""));
+        while (elements.MoveNext()) {
+            var runes = elements.GetTextElement().EnumerateRunes().ToArray();
+            if (runes.Any(r=>r.Value is >= 0x1f000 and <= 0x1ffff || r.Value is 0xfe0f or 0x20e3)) { total += 2; continue; }
+            total += runes.Sum(r => r.Value <= 0x10ff || r.Value is >= 0x2000 and <= 0x200d or >= 0x2010 and <= 0x201f or >= 0x2032 and <= 0x2037 ? 1 : 2);
+        }
+        return total;
     }
     [GeneratedRegex(@"https?://[^\s]+")]
     private static partial Regex Links();
@@ -187,13 +195,19 @@ public sealed partial class Connectors(IHttpClientFactory factory, Store db)
         result = result with { Verification = "source_independence_unverified" };
         return new Analysis { PromptVersion = "v3-evidence", EventId = item.Id, Result = Json.Write(result), Model = model, DurationMs = (int)timer.ElapsedMilliseconds, Usage = root.TryGetProperty("usage", out var usage) ? usage.GetRawText() : "{}" };
     }
-    public async Task<(string Status, string? Remote)> Deliver(string channel, string content, CancellationToken ct)
+    public async Task<(string Status, string? Remote)> Deliver(string channel, string content, CancellationToken ct, Attachment[]? attachments = null)
     {
+        attachments ??= [];
+        if (channel == "binance") return await DeliverBinance(content, attachments, ct);
         if (!Configured(channel)) throw new InvalidOperationException("渠道凭据未配置");
-        if (ContentError(channel, content) is { } error) throw new InvalidOperationException(error);
+        if (ContentError(channel, content, attachments.Length>0) is { } error) throw new InvalidOperationException(error);
         using var req = channel == "x" ? new HttpRequestMessage(HttpMethod.Post, "https://api.x.com/2/tweets") : new HttpRequestMessage(HttpMethod.Post, "https://api.telegram.org/bot" + Env("TELEGRAM_BOT_TOKEN") + "/sendMessage");
         if (channel == "x") req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Env("X_USER_ACCESS_TOKEN"));
-        req.Content = channel == "x" ? JsonContent.Create(new { text = content }) : JsonContent.Create(new { chat_id = Env("TELEGRAM_CHAT_ID"), text = content });
+        var mediaIds = channel == "x" ? await UploadX(attachments, ct) : [];
+        var post = new Dictionary<string,object>();
+        if (!string.IsNullOrWhiteSpace(content)) post["text"] = content;
+        if (mediaIds.Length > 0) post["media"] = new { media_ids = mediaIds };
+        req.Content = channel == "x" ? JsonContent.Create(post) : JsonContent.Create(new { chat_id = Env("TELEGRAM_CHAT_ID"), text = content });
         try
         {
             using var response = await factory.CreateClient("platform").SendAsync(req, ct);

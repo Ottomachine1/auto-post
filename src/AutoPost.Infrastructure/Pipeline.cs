@@ -1,6 +1,8 @@
 using AutoPost.Core;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using System.Data.Common;
+using MySql.Data.MySqlClient;
 
 namespace AutoPost.Infrastructure;
 
@@ -21,10 +23,18 @@ public sealed class Pipeline(Store db, Connectors connectors)
     }
     public async Task<Job?> Claim(CancellationToken ct, string? kind = null)
     {
-        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"Jobs\" SET \"Status\"='pending', \"LeaseOwner\"=NULL WHERE \"Status\"='running' AND \"LeaseUntil\" < {Clock.Now}", ct);
-        if (kind is null or "publish") await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"Deliveries\" SET \"Status\"='unknown',\"Error\"='进程中断，请人工核验',\"UpdatedAt\"={Clock.Now} WHERE \"Status\"='sending'", ct);
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var job = await db.Jobs.FromSqlInterpolated($"SELECT * FROM \"Jobs\" WHERE \"Status\"='pending' AND \"DueAt\" <= {Clock.Now} AND ({kind}::text IS NULL OR \"Kind\"={kind}) ORDER BY \"Priority\" DESC, \"DueAt\" FOR UPDATE SKIP LOCKED LIMIT 1").FirstOrDefaultAsync(ct);
+        await db.Sql($"UPDATE \"Jobs\" SET \"Status\"='pending', \"LeaseOwner\"=NULL WHERE \"Status\"='running' AND \"LeaseUntil\" < {Clock.Now}", ct);
+        if (kind is null or "publish") await db.Sql($"UPDATE \"Deliveries\" SET \"Status\"='unknown',\"Error\"='进程中断，请人工核验',\"UpdatedAt\"={Clock.Now} WHERE \"Status\"='sending'", ct);
+        await using var tx = await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
+        FormattableString query = db.MySql
+            ? (FormattableString)$"SELECT * FROM `Jobs` WHERE `Status`='pending' AND `DueAt` <= {Clock.Now} AND ({kind} IS NULL OR `Kind`={kind}) ORDER BY `Priority` DESC, `DueAt` LIMIT 1 FOR UPDATE SKIP LOCKED"
+            : $"SELECT * FROM \"Jobs\" WHERE \"Status\"='pending' AND \"DueAt\" <= {Clock.Now} AND ({kind}::text IS NULL OR \"Kind\"={kind}) ORDER BY \"Priority\" DESC, \"DueAt\" FOR UPDATE SKIP LOCKED LIMIT 1";
+        Job? job = null;
+        for (var attempt = 0; attempt < 20; attempt++) {
+            job = (await db.Jobs.FromSqlInterpolated(query).ToListAsync(ct)).FirstOrDefault();
+            if (job != null || !db.MySql || !await db.Jobs.AnyAsync(j=>j.Status=="pending" && j.DueAt<=Clock.Now && (kind==null || j.Kind==kind),ct)) break;
+            await Task.Delay(20,ct);
+        }
         if (job != null)
         {
             job.Status = "running"; job.Attempts++; job.LeaseUntil = Clock.Now + 1800; job.LeaseOwner = Environment.MachineName + ":" + Environment.ProcessId;
@@ -35,11 +45,13 @@ public sealed class Pipeline(Store db, Connectors connectors)
     public async Task<bool> RunOnce(CancellationToken ct, string kind = "analyse")
     {
         // A session lock guarantees one active worker even if a second container starts.
-        await using var leader = new NpgsqlConnection(Registration.Connection);
+        await using DbConnection leader = db.MySql ? new MySqlConnection(Registration.Connection) : new NpgsqlConnection(Registration.Connection);
         await leader.OpenAsync(ct);
         var laneLock = kind switch { "collect" => 794122, "analyse" => 794123, "publish" => 794124, _ => throw new ArgumentException("Unknown lane") };
-        await using var command = new NpgsqlCommand("SELECT pg_try_advisory_lock(" + laneLock + ")", leader);
-        if (!Equals(await command.ExecuteScalarAsync(ct), true)) return false;
+        await using var command = leader.CreateCommand();
+        command.CommandText = db.MySql ? "SELECT GET_LOCK('autopost-lane-" + laneLock + "',0)" : "SELECT pg_try_advisory_lock(" + laneLock + ")";
+        var acquired = await command.ExecuteScalarAsync(ct);
+        if (db.MySql ? Convert.ToInt32(acquired) != 1 : !Equals(acquired, true)) return false;
         try
         {
             await Schedule(ct);
@@ -83,7 +95,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
             }
             db.Mark("task", job.Id, job.Status); await db.SaveChangesAsync(ct); return true;
         }
-        finally { await using var release = new NpgsqlCommand("SELECT pg_advisory_unlock(" + laneLock + ")", leader); await release.ExecuteScalarAsync(CancellationToken.None); }
+        finally { await using var release = leader.CreateCommand(); release.CommandText = db.MySql ? "SELECT RELEASE_LOCK('autopost-lane-" + laneLock + "')" : "SELECT pg_advisory_unlock(" + laneLock + ")"; await release.ExecuteScalarAsync(CancellationToken.None); }
     }
     public async Task Analyse(string id, CancellationToken ct)
     {
@@ -126,13 +138,13 @@ public sealed class Pipeline(Store db, Connectors connectors)
             db.Mark("analysis", id); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         }
     }
-    public Draft NewDraft(string content, string[] channels, string? eventId, bool demo)
+    public Draft NewDraft(string content, string[] channels, string? eventId, bool demo, Attachment[]? media = null)
     {
-        var draft = new Draft { Content = content, Channels = Json.Write(channels.Distinct().ToArray()), EventId = eventId, Demo = demo };
+        var draft = new Draft { MediaJson = Json.Write(media ?? []), Content = content, Channels = Json.Write(channels.Distinct().ToArray()), EventId = eventId, Demo = demo };
         db.Drafts.Add(draft);
         Snapshot(draft); db.Mark("draft_created", draft.Id); return draft;
     }
-    public void Snapshot(Draft draft) => db.Versions.Add(new DraftVersion { DraftId = draft.Id, Revision = draft.Revision, Content = draft.Content, Channels = draft.Channels });
+    public void Snapshot(Draft draft) => db.Versions.Add(new DraftVersion { DraftId = draft.Id, Revision = draft.Revision, MediaJson = draft.MediaJson, Content = draft.Content, Channels = draft.Channels });
     public async Task QueuePublish(Draft draft, Rule? rule, CancellationToken ct)
     {
         if (Registration.Demo || draft.Demo || draft.Quarantined) throw new InvalidOperationException("演示或隔离草稿禁止发布");
@@ -140,7 +152,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
         foreach (var channel in Json.Read<string[]>(draft.Channels))
         {
             if (await db.Deliveries.AnyAsync(d => d.DraftId == draft.Id && d.Revision == draft.Revision && d.Channel == channel, ct)) continue;
-            var delivery = new Delivery { DraftId = draft.Id, Revision = draft.Revision, Channel = channel, RuleId = rule?.Id, RuleVersion = rule?.Version, Account = rule?.Account ?? "default", Status = channel is "x" or "telegram" ? "queued" : "manual_required" };
+            var delivery = new Delivery { DraftId = draft.Id, Revision = draft.Revision, Channel = channel, RuleId = rule?.Id, RuleVersion = rule?.Version, Account = rule?.Account ?? "default", Status = channel is "x" or "telegram" or "binance" ? "queued" : "manual_required" };
             db.Deliveries.Add(delivery);
             if (delivery.Status == "queued") await db.Enqueue("publish", delivery.Id, ct);
         }
@@ -168,7 +180,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
         }
         try
         {
-            var result = await connectors.Deliver(delivery.Channel, draft.Content, ct);
+            var result = await connectors.Deliver(delivery.Channel, draft.Content, ct, Json.Read<Attachment[]>(draft.MediaJson));
             delivery.Status = result.Status; delivery.RemoteId = result.Remote; delivery.Error = null;
         }
         catch (Uncertain) { delivery.Status = "unknown"; delivery.Error = "结果不明确，请核验平台，禁止自动重发"; }
@@ -189,7 +201,10 @@ public sealed class Pipeline(Store db, Connectors connectors)
     {
         if (Registration.Demo || draft.Demo || draft.Quarantined) return "演示或隔离内容禁止发布";
         if (draft.Revision != delivery.Revision || draft.ApprovedRevision != draft.Revision) return "草稿版本未审核";
-        if (Connectors.ContentError(delivery.Channel, draft.Content) is { } error) return error;
+        if (Connectors.ContentError(delivery.Channel, draft.Content, Json.Read<Attachment[]>(draft.MediaJson).Length>0) is { } error) return error;
+        var attachments = Json.Read<Attachment[]>(draft.MediaJson);
+        if (MediaFiles.ChannelError(delivery.Channel, attachments) is { } mediaError) return mediaError;
+        await MediaFiles.Validate(db, attachments, ct);
         if (!Connectors.Configured(delivery.Channel)) return "渠道未配置";
         var settings = await db.Settings.SingleAsync(ct);
         if (((await db.Budgets.FindAsync(["channel:" + delivery.Channel + ":" + Clock.Day], ct))?.Used ?? 0) >= settings.ChannelDailyLimit) return "渠道今日限额已用完";

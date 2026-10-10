@@ -3,10 +3,17 @@ using AutoPost.Infrastructure;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 
-var options = new DbContextOptionsBuilder<Store>().UseNpgsql(Registration.Connection).Options;
+if (args.Length > 0 && args[0] == "mysql-probe") {
+    await using var connection = new MySql.Data.MySqlClient.MySqlConnection(Registration.Connection);
+    try { await connection.OpenAsync(); using var command=connection.CreateCommand(); command.CommandText="SELECT VERSION()"; Console.WriteLine("Connected: " + await command.ExecuteScalarAsync()); command.CommandText="SHOW SESSION STATUS LIKE 'Ssl_cipher'"; using var reader=await command.ExecuteReaderAsync(); while(await reader.ReadAsync()) Console.WriteLine("TLS: " + reader.GetString(1)); }
+    catch (Exception ex) { Console.WriteLine("Probe failed: " + ex.GetType().Name + " " + ex.Message.Replace(Registration.Connection,"[redacted]")); Environment.ExitCode=1; }
+    return;
+}
+var options = (DbContextOptions<Store>)Registration.Configure(new DbContextOptionsBuilder<Store>(), Registration.Connection).Options;
 await using var db = new Store(options);
 if (args.Length == 0) throw new ArgumentException("Commands: migrate | seed-demo | import-sqlite <path> | benchmark");
-if (args[0] == "migrate") { await db.Database.MigrateAsync(); return; }
+if (args[0] is "export-db" or "import-db" or "verify-db") { await DatabaseTransfer.Run(db,args[0],args[1]); return; }
+if (args[0] == "migrate") { await db.Migrate(); return; }
 if (args[0] == "feed-catalog")
 {
     if (args.Length < 2) throw new ArgumentException("feed-catalog <json> [validate] [enable-valid]");

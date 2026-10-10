@@ -13,7 +13,13 @@ test("login, stream, draft revision and responsive navigation", async ({
   ).toBeVisible();
   await page.getByRole("button", { name: "创建内容", exact: true }).click();
   const text = "UI acceptance " + Date.now();
-  await page.getByRole("textbox", { name: "内容", exact: true }).fill(text);
+  await page.getByRole("textbox", { name: "推文内容", exact: true }).fill(text);
+  await page.locator('input[type="file"]').setInputFiles({ name:'test.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jY9sAAAAASUVORK5CYII=','base64') });
+  await expect(page.getByLabel('图片 1 替代文字')).toBeVisible();
+  await page.getByLabel('图片 1 替代文字').fill('Acceptance image');
+  await page.getByRole('button',{name:'查看成稿',exact:true}).click();
+  await expect(page.getByAltText('Acceptance image')).toBeVisible();
+  await page.getByRole('button',{name:'返回编辑',exact:true}).click();
   await page.getByRole("button", { name: "分渠道预览", exact: true }).click();
   await expect(page.getByText("通过内容校验")).toBeVisible();
   await page
@@ -25,7 +31,7 @@ test("login, stream, draft revision and responsive navigation", async ({
   await expect(card.getByText("已审核", { exact: true })).toBeVisible();
   await card.getByRole("button", { name: "编辑", exact: true }).click();
   await page
-    .getByRole("textbox", { name: "内容", exact: true })
+    .getByRole("textbox", { name: "推文内容", exact: true })
     .fill(text + " v2");
   await page
     .getByRole("button", { name: "保存待审核草稿", exact: true })

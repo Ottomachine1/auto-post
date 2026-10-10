@@ -45,6 +45,7 @@ public sealed class Analysis : Entity
 }
 public sealed class Draft : Entity
 {
+    public string MediaJson { get; set; } = "[]";
     public string Content { get; set; } = "";
     public string Channels { get; set; } = "[]";
     public string? EventId { get; set; }
@@ -60,6 +61,7 @@ public sealed class Draft : Entity
 }
 public sealed class DraftVersion : Entity
 {
+    public string MediaJson { get; set; } = "[]";
     public string DraftId { get; set; } = "";
     public int Revision { get; set; }
     public string Content { get; set; } = "";
@@ -185,3 +187,12 @@ public static class Rules
         return inWindow ? null : "不在发布时间窗口";
     }
 }
+
+public sealed class MediaAsset : Entity {
+    public string ContentType { get; set; } = "";
+    public string Data { get; set; } = "";
+    public long Size { get; set; }
+    public bool Demo { get; set; }
+    public long CreatedAt { get; set; } = Clock.Now;
+}
+public sealed record Attachment(string Id, string Alt = "");
