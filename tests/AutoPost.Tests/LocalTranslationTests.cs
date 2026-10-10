@@ -59,6 +59,7 @@ public sealed class LocalTranslationTests
         public HttpClient CreateClient(string name) { Name = name; return new HttpClient(this); }
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
+            Assert.True(request.Content!.Headers.ContentLength > 0);
             Uri = request.RequestUri;
             return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(content, System.Text.Encoding.UTF8, "application/json") });
         }

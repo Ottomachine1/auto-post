@@ -10,7 +10,7 @@ import argostranslate.translate
 import langid
 
 LOCK = threading.Lock()
-LIMIT = 100_000
+LIMIT = 256_000  # JSON can escape each Chinese character as six ASCII bytes.
 
 
 def translate(text, source):

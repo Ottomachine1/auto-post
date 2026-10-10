@@ -24,7 +24,8 @@ public static class LocalTranslation
         if (source is "" or "und") source = "auto";
         // Chinese feeds can contain English articles; translate those through English.
         if (source == "zh") source = "en";
-        using var response = await factory.CreateClient("translation").PostAsJsonAsync(endpoint.TrimEnd('/') + "/translate", new { title = item.Title, body = item.Body, source }, ct);
+        using var content = new StringContent(Json.Write(new { title = item.Title, body = item.Body, source }), System.Text.Encoding.UTF8, "application/json");
+        using var response = await factory.CreateClient("translation").PostAsync(endpoint.TrimEnd('/') + "/translate", content, ct);
         if ((int)response.StatusCode is 429 or 503) throw new RetryLater(60);
         response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync<Result>(cancellationToken: ct) ?? throw new InvalidOperationException("Empty translation");
