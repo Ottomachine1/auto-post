@@ -19,7 +19,7 @@ test("login, stream, draft revision and responsive navigation", async ({
   await page
     .getByRole("button", { name: "保存待审核草稿", exact: true })
     .click();
-  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  await expect(page.locator(".content-card p").filter({ hasText: text })).toBeVisible();
   const card = page.locator(".content-card").filter({ hasText: text });
   await card.getByRole("button", { name: "审核当前版本" }).click();
   await expect(card.getByText("已审核", { exact: true })).toBeVisible();
@@ -30,7 +30,7 @@ test("login, stream, draft revision and responsive navigation", async ({
   await page
     .getByRole("button", { name: "保存待审核草稿", exact: true })
     .click();
-  await expect(page.getByText(text + " v2", { exact: true })).toBeVisible();
+  await expect(page.locator(".content-card p").filter({ hasText: text + " v2" })).toBeVisible();
   await expect(
     page
       .locator(".content-card")
