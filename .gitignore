@@ -7,6 +7,8 @@ __pycache__/
 .venv/
 node_modules/
 data/
+state/
+oauth/
 **/bin/
 **/obj/
 web/dist/
