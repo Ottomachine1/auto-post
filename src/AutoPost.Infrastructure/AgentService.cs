@@ -83,7 +83,7 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
         } catch(RetryLater) {
             message.Status="waiting_quota"; message.Progress="今日模型额度已用完，次日恢复；仍可停止任务"; message.UpdatedAt=Clock.Now;
             db.Mark("agent",message.Id,"waiting_quota"); await db.SaveChangesAsync(shutdown); throw;
-        } catch(OperationCanceledException) when(stop.IsCancellationRequested && !shutdown.IsCancellationRequested) {
+        } catch(OperationCanceledException) when((stop.IsCancellationRequested || message.CancelRequested) && !shutdown.IsCancellationRequested) {
             db.ChangeTracker.Clear(); message=await db.AgentMessages.SingleAsync(m=>m.Id==job.Target,shutdown);
             message.CancelRequested=true; message.Status="cancelled"; message.Progress="已停止，未提交分析或草稿";
             db.Attach(job); job.Status="done";
