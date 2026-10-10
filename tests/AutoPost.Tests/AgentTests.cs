@@ -15,6 +15,14 @@ public sealed partial class WorkflowTests
         var job=await db.Enqueue("agent",message.Id);await db.SaveChangesAsync();return(message,job);
     }
     private void AgentResponse(string summary="中文解读",string draft="候选草稿") => factory.Responses.Enqueue(Json.Write(new {choices=new[]{new{message=new{content=Json.Write(new{summary,facts=new[]{"来源声明"},reports=Array.Empty<string>(),predictions=Array.Empty<string>(),rumors=Array.Empty<string>(),uncertainties=new[]{"尚未独立核验"},draft,sources=new[]{new{id="forged",url="https://fake.invalid"}},tool="publish"})}}},usage=new{total_tokens=45}}));
+    [Fact] public async Task AgentNaturalQuestionMatchesAllTopicGroupsWithoutDemoOrUnrelatedResults() {
+        Environment.SetEnvironmentVariable("OPENAI_API_KEY","");await using var db=Db();
+        db.Events.AddRange(new Event{SourceId="one",Title="Bitcoin ETF news",PublishedAt=Clock.Now-10},new Event{SourceId="two",Title="BTC ETF filing",PublishedAt=Clock.Now-20},new Event{SourceId="three",Title="Bitcoin price",PublishedAt=Clock.Now},new Event{SourceId="four",Title="BTC ETF demo",Demo=true});await db.SaveChangesAsync();
+        var(message,job)=await AgentTask(db,"search","帮我分析最新比特币 ETF 消息");
+        var p=new Pipeline(db,new Connectors(factory,db));await new AgentService(db,new Connectors(factory,db),p).Run(job,default);
+        var answer=Json.Read<AgentAnswer>(message.Result);Assert.Equal(2,answer.Sources.Length);Assert.All(answer.Sources,s=>Assert.Contains("ETF",s.Title));Assert.Equal(0,factory.Calls);
+        var(none,next)=await AgentTask(db,"search","不存在的主题XYZ");await new AgentService(db,new Connectors(factory,db),p).Run(next,default);Assert.Empty(Json.Read<AgentAnswer>(none.Result).Sources);
+    }
     [Fact] public async Task ModelCatalogListsAndRejectsUnavailableSelection() {
         factory.Responses.Enqueue("{\"data\":[{\"id\":\"model-b\"},{\"id\":\"model-a\"},{\"id\":\"model-a\"}]}");
         Assert.Equal(new[]{"model-a","model-b"},await ModelCatalog.List(factory,default));

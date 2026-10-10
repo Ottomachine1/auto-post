@@ -26,6 +26,7 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
             // No model-selected operations: all mutations originate in the explicit UI action.
             var events=await Retrieve(message,ct); Tool(message,"检索情报");
             string notice="内容来自已接入来源；转载数量不等于独立证据。";
+            if(message.EventId==null && message.Action is "search" or "draft" && AgentSearch.Terms(message.Prompt).Length==0) notice+=" 未识别明确主题，当前按最新入库内容检索；可输入具体主题缩小范围。";
             if(message.Action=="refresh") {
                 if(Registration.Demo) notice="演示模式不会刷新真实来源。";
                 else {
@@ -101,7 +102,7 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
         var query=db.Events.AsNoTracking().Where(e=>e.Demo==Registration.Demo);
         if(message.EventId!=null) query=query.Where(e=>e.Id==message.EventId);
         else if(message.Action is "search" or "draft" && message.Prompt.Trim() is { Length:>0 } text) {
-            var term=text.ToLower(); query=query.Where(e=>e.Title.ToLower().Contains(term) || e.Body.ToLower().Contains(term));
+            query=AgentSearch.Apply(query,text);
         }
         return await query.OrderByDescending(e=>e.PublishedAt).ThenByDescending(e=>e.Id).Take(12).ToListAsync(ct);
     }
