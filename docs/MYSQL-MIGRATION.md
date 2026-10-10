@@ -19,3 +19,5 @@ v0.6.3 已切换。最终导入 6,723 条事件、119 条分析、119 条草稿�
 服务器和公网 HTTPS 健康检查 live/ok；实际认证系统状态为 mysql/connected，自动发布暂停。安全 Cookie、CSRF 拒绝、历史游标分页、来源 CRUD、Agent 最新情报任务（12 个来源引用）均通过。Worker 已在云库恢复真实采集及模型分析。每日备份计时器 active，首次在线云库 JSON 备份已生成。
 
 证书单元及模拟认证前拒绝测试 2 项通过；真实云库错误指纹拒绝、正确指纹 TLS 登录通过。真实 MySQL 迁移、API 编辑隔离、租约恢复、关闭规则禁止发文 4 项通过；首次禁用连接池时并发领取发生连接失败，改为按身份独立且最多 10 连接的池后，该并发测试重跑通过。PostgreSQL 迁移、CSRF/来源及关闭规则回归 3 项通过。本次没有宣称全量回归或公开渠道发文验收完成。
+
+最终切换时的云库备份实际恢复至独立 `autopost_restore_final_20261011`，15 表再次与云库备份报告全部匹配（`FINAL_CLOUD_BACKUP_RESTORE_MATCH`）。保留切换时 PostgreSQL 备份 `autopost-20261010T163125Z.dump`、云库切换备份 `autopost-cloud-cutover-20261011.json` 和首个在线备份 `autopost-20261010T163245Z.json`；文件名时间为 UTC。
