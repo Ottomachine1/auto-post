@@ -29,5 +29,19 @@ source,_=req('/sources','POST',{'kind':'rss','name':'Temporary disabled server a
 assert '&hl=en-US&' in source['address'];source['intervalSeconds']=1800
 req('/sources/'+source['id'],'PUT',source,headers);req('/sources/'+source['id'],'DELETE',headers=headers);result['keywordCrud']=True
 result['csrfRejected']=True
+agent=req('/agent/status')[0]
+result['agentConfigured']=agent['configured'];result['cloudDatabase']=agent['cloudDatabase']
+conversation=req('/agent/sessions','POST',{},headers)[0]
+message=req('/agent/sessions/'+conversation['id']+'/messages','POST',{'action':'latest','prompt':'生产上线验收：最新情报','requestId':'server-smoke-latest'},headers)[0]
+import time
+for attempt in range(30):
+ task=req('/agent/tasks/'+message['id'])[0]
+ if task['status'] not in ('queued','running'):break
+ time.sleep(1)
+assert task['status']=='completed',task['status']
+answer=json.loads(task['result']);assert answer['sources'] and answer['asOf']>0
+assert all(s['publishedAt']>0 and s['collectedAt']>0 for s in answer['sources'])
+assert not answer.get('draftId')
+result['agentLatest']={'status':task['status'],'citations':len(answer['sources']),'asOf':answer['asOf']}
 req('/session','DELETE',headers=headers)
 print(json.dumps(result,ensure_ascii=False))
