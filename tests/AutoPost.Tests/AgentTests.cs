@@ -51,6 +51,18 @@ public sealed partial class WorkflowTests
     [Fact] public async Task AgentRefreshHonorsDisabledAndSuspendedSources() {
         await using var db=Db();var enabled=new Source{Enabled=true,NextRun=Clock.Now+900};var disabled=new Source{Enabled=false,NextRun=Clock.Now+900};var suspended=new Source{Enabled=true,SuspendedUntil=Clock.Now+900,NextRun=Clock.Now+900};db.Sources.AddRange(enabled,disabled,suspended);await db.SaveChangesAsync();var(message,job)=await AgentTask(db,"refresh");var p=new Pipeline(db,new Connectors(factory,db));await new AgentService(db,new Connectors(factory,db),p).Run(job,default);Assert.True(enabled.NextRun<=Clock.Now);Assert.True(disabled.NextRun>Clock.Now);Assert.True(suspended.NextRun>Clock.Now);Assert.Equal(0,factory.Calls);
     }
+    [Fact] public async Task AgentModelTimeoutIsFailureNotUserCancellation() {
+        Environment.SetEnvironmentVariable("OPENAI_MODEL","test-model");
+        await using var db=Db(); db.Events.Add(new Event{Title="BTC"}); await db.SaveChangesAsync();
+        var(message,job)=await AgentTask(db,"draft","BTC");
+        factory.BeforeReply=ct=>throw new TaskCanceledException("HTTP timeout");
+        var p=new Pipeline(db,new Connectors(factory,db));
+        await new AgentService(db,new Connectors(factory,db),p).Run(job,default);
+        db.ChangeTracker.Clear(); var saved=(await db.AgentMessages.FindAsync(message.Id))!;
+        Assert.Equal("failed",saved.Status); Assert.False(saved.CancelRequested); Assert.Contains("超时",saved.Progress);
+        Assert.Empty(await db.Drafts.ToListAsync()); Assert.Empty(await db.Deliveries.ToListAsync());
+        Assert.Equal("done",(await db.Jobs.FindAsync(job.Id))!.Status);
+    }
     [Fact] public async Task AgentCancellationDuringModelCommitsNoDraft() {
         Environment.SetEnvironmentVariable("OPENAI_MODEL","test-model");await using var db=Db();db.Events.Add(new Event{Title="BTC"});await db.SaveChangesAsync();var(message,job)=await AgentTask(db,"draft","BTC");AgentResponse();
         factory.BeforeReply=async ct=>{await using var other=Db();var row=await other.AgentMessages.FindAsync(message.Id);row!.CancelRequested=true;await other.SaveChangesAsync();await Task.Delay(1600,ct);};

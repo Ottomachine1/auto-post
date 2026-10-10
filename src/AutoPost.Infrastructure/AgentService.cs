@@ -83,14 +83,14 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
         } catch(RetryLater) {
             message.Status="waiting_quota"; message.Progress="今日模型额度已用完，次日恢复；仍可停止任务"; message.UpdatedAt=Clock.Now;
             db.Mark("agent",message.Id,"waiting_quota"); await db.SaveChangesAsync(shutdown); throw;
-        } catch(OperationCanceledException) when(!shutdown.IsCancellationRequested) {
+        } catch(OperationCanceledException) when(stop.IsCancellationRequested && !shutdown.IsCancellationRequested) {
             db.ChangeTracker.Clear(); message=await db.AgentMessages.SingleAsync(m=>m.Id==job.Target,shutdown);
             message.CancelRequested=true; message.Status="cancelled"; message.Progress="已停止，未提交分析或草稿";
             db.Attach(job); job.Status="done";
             db.Mark("agent",message.Id,"cancelled"); await db.SaveChangesAsync(shutdown);
         } catch(Exception error) when(!shutdown.IsCancellationRequested) {
             db.ChangeTracker.Clear(); message=await db.AgentMessages.SingleAsync(m=>m.Id==job.Target,shutdown);
-            message.Status="failed"; message.Progress=error is JsonException ? "模型未返回有效的结构化内容，请选择其他模型或重新发起" : "任务失败，请检查模型配置、权限或响应格式后重新发起";
+            message.Status="failed"; message.Progress=error is OperationCanceledException ? "模型请求超时，未提交分析或草稿；可重新发起任务" : error is JsonException ? "模型未返回有效的结构化内容，请选择其他模型或重新发起" : "任务失败，请检查模型配置、权限或响应格式后重新发起";
             db.Mark("agent_error",message.Id,error.GetType().Name);
             db.Attach(job); job.Status="done";
             db.Mark("agent",message.Id,"failed"); await db.SaveChangesAsync(shutdown);
