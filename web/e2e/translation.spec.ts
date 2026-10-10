@@ -4,6 +4,8 @@ test('Chinese translation keeps original accessible and labels machine output',a
  await page.route('**/api/events/page*',route=>route.fulfill({json:{items:[item],nextCursor:null}}));
  await page.route('**/api/events/translation-ui-fixture',route=>route.fulfill({json:{item,analysis:null,related:[],drafts:[]}}));
  await page.goto('/');await page.getByRole('button',{name:'连接后端',exact:true}).click();await page.getByLabel('管理访问令牌').fill('local-preview-token-at-least-32-characters');await page.getByRole('button',{name:'验证并连接'}).click();
+ await expect(page.getByText('实时连接',{exact:true}).first()).toBeVisible();
+ await expect(page.locator('.event h3')).toHaveCount(1);
  await expect(page.locator('.event h3')).toHaveText('市场新闻中文标题');
  await expect(page.locator('.event')).toContainText('中文机译');
  await page.locator('.event-main').click();
