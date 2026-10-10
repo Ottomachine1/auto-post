@@ -1251,6 +1251,7 @@ function App() {
                     : "待连接或已离线"}
                 </p>
                 {connected && <Budget status={status.data} action={action} />}
+                {connected && <section aria-label="本地翻译状态"><h3>中文翻译</h3><p className="muted">{status.data?.translation?.configured ? "本地 CPU 翻译 · 无付费模型请求" : "本地翻译服务待配置"}</p><div className="chips">{status.data?.translation?.counts?.map((entry: {status:string;count:number}) => <span key={entry.status}>{({native:"中文原文",completed:"已翻译",pending:"待翻译",failed:"翻译失败"} as Record<string,string>)[entry.status] || entry.status}：{entry.count}</span>)}</div></section>}
                 <div className="chips">
                   {status.data?.usage.map((b: any) => (
                     <span key={b.id}>

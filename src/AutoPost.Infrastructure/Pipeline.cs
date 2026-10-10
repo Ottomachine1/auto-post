@@ -77,7 +77,10 @@ public sealed class Pipeline(Store db, Connectors connectors)
                         break;
                     case "translate":
                         var translation = await db.Events.FindAsync([job.Target], ct);
-                        if (translation is { Demo: false }) { await LocalTranslation.Run(translation, connectors.Factory, ct); db.Mark("translation", translation.Id); }
+                        // Scheduling can observe pending just before another lane commits completion.
+                        // Refresh tracked candidates and skip already translated work after recovery.
+                        if (translation != null) await db.Entry(translation).ReloadAsync(ct);
+                        if (translation is { Demo: false, TranslationStatus: "pending" }) { await LocalTranslation.Run(translation, connectors.Factory, ct); db.Mark("translation", translation.Id); }
                         break;
                     case "analyse": await Analyse(job.Target, ct); break;
                     case "publish": await Publish(job.Target, ct); break;

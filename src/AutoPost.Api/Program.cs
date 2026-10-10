@@ -154,6 +154,7 @@ api.MapGet("/status", async (Store db) => new
     xAuthorizationMode = XAuthorization.RefreshConfigured ? "oauth_refresh" : Connectors.Env("X_USER_ACCESS_TOKEN")!="" ? "static_token" : "unconfigured",
     channels = Connectors.Channels.Select(c => new { id = c, label = c, mode = c is "x" or "telegram" or "binance" ? "api" : "manual_export", configured = Connectors.Configured(c) }),
     events = await db.Events.CountAsync(e => e.Demo == Registration.Demo),
+    translation = new { configured = Connectors.Env("TRANSLATION_URL") != "", engine = "argos-offline", counts = await db.Events.Where(e => e.Demo == Registration.Demo).GroupBy(e => e.TranslationStatus).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync() },
     queue = await db.Jobs.GroupBy(j => j.Status).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync(),
     usage = await db.Budgets.Where(b => b.Id.EndsWith(Clock.Day)).ToListAsync()
 });

@@ -38,8 +38,9 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
             }
             var unavailable=await db.Sources.CountAsync(s=>s.Enabled && (s.Error!=null || s.SuspendedUntil>Clock.Now),ct);
             if(unavailable>0) notice+=$" {unavailable} 个来源存在错误或暂缓采集。";
-            var citations=events.Select(e=>new AgentCitation(e.Id,e.Title,SafeUrl(e.Url),e.Publisher==""?e.Source:e.Publisher,e.PublishedAt,e.CollectedAt)).ToArray();
-            var answer=new AgentAnswer(events.Count==0?"当前筛选没有已入库情报。":$"找到 {events.Count} 条最新相关情报。",[],events.Select(e=>e.Title).ToArray(),[],[],[notice],citations,Clock.Now);
+            if(events.Any(e=>e.TranslationStatus is not ("completed" or "native"))) notice+=" 部分来源正在本地翻译，尚未完成的标题保留原文。";
+            var citations=events.Select(e=>new AgentCitation(e.Id,e.ChineseTitle==""?e.Title:e.ChineseTitle,SafeUrl(e.Url),e.Publisher==""?e.Source:e.Publisher,e.PublishedAt,e.CollectedAt)).ToArray();
+            var answer=new AgentAnswer(events.Count==0?"当前筛选没有已入库情报。":$"找到 {events.Count} 条最新相关情报。",[],events.Select(e=>e.ChineseTitle==""?e.Title:e.ChineseTitle).ToArray(),[],[],[notice],citations,Clock.Now);
             Analysis? analysis=null;
             var needsModel=message.Action is "analyse" or "draft" or "search";
             if(needsModel && Connectors.Env("OPENAI_API_KEY")=="") {
