@@ -16,7 +16,6 @@ public sealed class Pipeline(Store db, Connectors connectors)
         if (!Registration.Demo)
         {
             foreach (var source in await db.Sources.Where(s => s.Enabled && s.NextRun <= Clock.Now && s.SuspendedUntil <= Clock.Now).OrderByDescending(s => s.Priority).ToListAsync(ct)) { var scheduled = await db.Enqueue("collect", source.Id, ct); scheduled.Priority = source.Priority; }
-            foreach (var item in await db.Events.Where(e => !e.Demo && e.TranslationStatus == "pending").OrderByDescending(e => e.CollectedAt).Take(100).ToListAsync(ct)) await db.Enqueue("translate", item.Id, ct);
             if (Connectors.Env("OPENAI_API_KEY") != "")
                 foreach (var item in await db.Events.Where(e => !e.Demo && e.AnalysisStatus == "pending").OrderBy(e => e.CollectedAt).Take(100).ToListAsync(ct)) await db.Enqueue("analyse", item.Id, ct);
         }
@@ -53,7 +52,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
         try
         {
             await Schedule(ct);
-            var job = await Claim(ct, kind); if (job == null) return false;
+            var job = await Claim(ct, kind == "translate" ? "translate_manual" : kind); if (job == null) return false;
             try
             {
                 switch (job.Kind)
@@ -75,7 +74,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
                         var source = await db.Sources.FindAsync([job.Target], ct);
                         if (source is { Enabled: true }) await connectors.Collect(source, ct);
                         break;
-                    case "translate":
+                    case "translate_manual":
                         var translation = await db.Events.FindAsync([job.Target], ct);
                         // Scheduling can observe pending just before another lane commits completion.
                         // Refresh tracked candidates and skip already translated work after recovery.
@@ -96,7 +95,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
                 job.Error = "执行失败，请检查配置、平台权限或响应格式";
                 if (job.Kind == "collect" && await db.Sources.FindAsync([job.Target], ct) is { } source)
                 { FeedReader.Failure(source, error); job.Status = "done"; source.NextRun = Math.Max(source.NextRun, job.DueAt); }
-                if (job.Kind == "translate" && await db.Events.FindAsync([job.Target], ct) is { } translated) translated.TranslationStatus = job.Status == "failed" ? "failed" : "pending";
+                if (job.Kind == "translate_manual" && await db.Events.FindAsync([job.Target], ct) is { } translated) translated.TranslationStatus = job.Status == "failed" ? "failed" : "pending";
                 if (job.Kind == "analyse" && await db.Events.FindAsync([job.Target], ct) is { } item)
                     item.AnalysisStatus = job.Status == "failed" ? "failed" : "pending";
             }

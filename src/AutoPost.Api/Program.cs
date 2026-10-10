@@ -123,7 +123,7 @@ api.MapPost("/events/{id}/translation", async (string id, Store db) =>
     var item = await db.Events.SingleOrDefaultAsync(e => e.Id == id && !e.Demo && !Registration.Demo) ?? throw new ArgumentException("真实事件不存在");
     if (item.TranslationStatus is "completed" or "native") return Results.Ok(new { status = item.TranslationStatus });
     item.TranslationStatus = "pending";
-    var job = await db.Enqueue("translate", id); job.Priority = 100; job.DueAt = Clock.Now;
+    var job = await db.Enqueue("translate_manual", id); job.Priority = 100; job.DueAt = Clock.Now;
     db.Mark("translation_retry", id);
     return Results.Accepted(value: new { taskId = job.Id, status = "queued" });
 });
