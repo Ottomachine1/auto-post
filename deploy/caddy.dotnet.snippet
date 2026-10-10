@@ -1,10 +1,6 @@
 # Append to the existing Caddyfile only after backup and validation.
 auto-post.maxson.cc {
-    tls force_automate {
-        issuer acme {
-            disable_http_challenge
-        }
-    }
+    tls /data/certs/clothes-cloudflare-origin.pem /data/certs/clothes-cloudflare-origin.key
     encode zstd gzip
     header {
         Strict-Transport-Security "max-age=31536000"
