@@ -8,6 +8,7 @@ RUN npm run build
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /source
 COPY Directory.Build.props ./
+COPY config/ config/
 COPY src/ src/
 COPY tools/ tools/
 RUN dotnet publish src/AutoPost.Api -c Release -o /out/api && dotnet publish src/AutoPost.Worker -c Release -o /out/worker && dotnet publish tools/AutoPost.Tools -c Release -o /out/tools

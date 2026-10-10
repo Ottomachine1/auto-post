@@ -25,6 +25,7 @@ public static partial class Network
     public static SocketsHttpHandler SafeHandler() => new()
     {
         AllowAutoRedirect = false,
+        UseProxy = false,
         ConnectCallback = async (ctx, ct) =>
         {
             var addresses = await Dns.GetHostAddressesAsync(ctx.DnsEndPoint.Host, ct);

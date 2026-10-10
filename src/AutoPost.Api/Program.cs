@@ -137,6 +137,7 @@ api.MapGet("/status", async (Store db) => new
     sources = await db.Sources.ToListAsync(),
     settings = await db.Settings.SingleAsync(),
     ai_configured = Connectors.Env("OPENAI_API_KEY") != "",
+    embedding_configured = Connectors.Env("OPENAI_API_KEY") != "" && Connectors.Env("EMBEDDING_MODEL") != "",
     channels = Connectors.Channels.Select(c => new { id = c, label = c, mode = c is "x" or "telegram" ? "api" : "manual_export", configured = Connectors.Configured(c) }),
     events = await db.Events.CountAsync(e => e.Demo == Registration.Demo),
     queue = await db.Jobs.GroupBy(j => j.Status).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync(),
@@ -204,15 +205,32 @@ api.MapPost("/rules/{id}/test", async (string id, Store db) =>
     var result = rows.Select(e => new { e.Id, e.Title, reason = AutoPost.Core.Rules.Rejection(r, e, DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).Hour) ?? "匹配（仍需通过配额及渠道检查）" }).ToList();
     r.Enabled = enabled; return Results.Ok(result);
 });
+api.MapPost("/sources/catalog", async (Store db) =>
+{
+    using var stream = typeof(FeedReader).Assembly.GetManifestResourceStream("feed-catalog.json")!;
+    using var reader = new StreamReader(stream); var entries = Json.Read<Source[]>(await reader.ReadToEndAsync());
+    var added = 0; foreach (var entry in entries) if (!await db.Sources.AnyAsync(s => s.Id == entry.Id)) { entry.Enabled = false; db.Sources.Add(entry); added++; }
+    db.Mark("catalog_imported", "rss", "added=" + added); return Results.Ok(new { added, candidates = entries.Length });
+});
+api.MapPost("/sources/validate-all", async (Store db) => { var entries = await db.Sources.Where(s => s.Kind == "rss" && !s.Enabled).ToListAsync(); foreach (var source in entries) await db.Enqueue("collect", "validate:" + source.Id); return Results.Accepted(value: new { queued = entries.Count }); });
 api.MapGet("/sources", async (Store db) => await db.Sources.ToListAsync());
-api.MapPost("/sources", (SourceInput input, Store db) => { var s = new Source(); ApplySource(s, input); db.Sources.Add(s); db.Mark("source_created", s.Id); return Results.Ok(s); });
+api.MapPost("/sources", async (SourceInput input, Store db) => { var s = new Source(); ApplySource(s, input); db.Sources.Add(s); if (s.EnableAfterValidation) await db.Enqueue("collect", "validate:" + s.Id); db.Mark("source_created", s.Id); return Results.Ok(s); });
 api.MapPut("/sources/{id}", async (string id, SourceInput input, Store db) =>
 {
     var s = await db.Sources.FindAsync(id) ?? throw new ArgumentException("来源不存在");
-    if (await db.Jobs.AnyAsync(j => j.Target == id && j.Kind == "collect" && j.Status == "running")) throw new InvalidOperationException("采集中，请稍后修改来源");
+    if (await db.Jobs.AnyAsync(j => (j.Target == id || j.Target == "validate:" + id) && j.Kind == "collect" && j.Status == "running")) throw new InvalidOperationException("采集中，请稍后修改来源");
     if (s.Address != input.Address) { s.Cursor = ""; s.PageToken = ""; s.PendingCursor = ""; }
-    ApplySource(s, input); db.Mark("source_updated", id); return Results.Ok(s);
+    ApplySource(s, input); if (s.EnableAfterValidation) await db.Enqueue("collect", "validate:" + s.Id); db.Mark("source_updated", id); return Results.Ok(s);
 });
+api.MapDelete("/sources/{id}", async (string id, Store db) =>
+{
+    if (await db.Jobs.AnyAsync(j => j.Kind == "collect" && (j.Target == id || j.Target == "validate:" + id) && j.Status == "running")) throw new InvalidOperationException("来源任务执行中，请稍后删除");
+    var s = await db.Sources.FindAsync(id); if (s != null) db.Sources.Remove(s);
+    foreach (var job in await db.Jobs.Where(j => j.Kind == "collect" && (j.Target == id || j.Target == "validate:" + id) && j.Status == "pending").ToListAsync()) job.Status = "cancelled";
+    db.Mark("source_deleted", id); return Results.Ok();
+});
+api.MapPost("/sources/{id}/validate", async (string id, Store db) => { var s = await db.Sources.FindAsync(id) ?? throw new ArgumentException("来源不存在"); if (s.Kind != "rss") throw new ArgumentException("仅检测 RSS/Atom"); await db.Enqueue("collect", "validate:" + id); db.Mark("source_check_requested", id); return Results.Accepted(); });
+api.MapGet("/sources/topic-url", (string topic, string? language, string? region) => new { url = NewsTopics.Url(topic, language ?? "en", region ?? "US") });
 api.MapPost("/collect", async (Store db) => { if (Registration.Demo) throw new InvalidOperationException("演示模式不采集真实数据"); foreach (var s in await db.Sources.Where(s => s.Enabled).ToListAsync()) await db.Enqueue("collect", s.Id); return Results.Accepted(value: new { status = "queued" }); });
 api.MapGet("/tasks", async (Store db) => await db.Jobs.OrderByDescending(j => j.DueAt).Take(100).ToListAsync());
 api.MapGet("/audit", async (Store db) => await db.Audits.OrderByDescending(a => a.CreatedAt).Take(100).ToListAsync());
@@ -221,7 +239,7 @@ app.UseDefaultFiles(); app.UseStaticFiles(); app.MapFallbackToFile("index.html")
 await app.RunAsync();
 
 static IOrderedQueryable<Event> Query(Store db, string? source, string? q, string? category) => db.Events.AsNoTracking().Where(e => e.Demo == Registration.Demo && (source == null || source == "" || e.Source == source) && (category == null || category == "" || e.Category == category) && (q == null || q == "" || EF.Functions.ILike(e.Title, "%" + q + "%") || EF.Functions.ILike(e.Body, "%" + q + "%"))).OrderByDescending(e => e.PublishedAt).ThenByDescending(e => e.Id);
-static object EventDto(Event e) => new { e.Id, e.Source, source_id = e.SourceId, e.Title, e.Body, e.Url, e.Category, published_at = e.PublishedAt, collected_at = e.CollectedAt, e.Demo, e.GroupId, e.AnalysisStatus };
+static object EventDto(Event e) => new { e.Id, e.Source, source_id = e.SourceId, e.Title, e.Body, e.Url, e.Category, published_at = e.PublishedAt, collected_at = e.CollectedAt, e.Demo, e.GroupId, e.AnalysisStatus, e.Author, e.Language, e.OriginalSummary, e.Publisher, e.EvidenceKey, e.Relation, e.PublishedEstimated };
 static async Task<Draft> GetDraft(Store db, string id) => await db.Drafts.SingleOrDefaultAsync(d => d.Id == id && (d.Demo == Registration.Demo || d.Quarantined)) ?? throw new ArgumentException("草稿不存在");
 static void ValidateDraft(DraftInput input)
 {
@@ -237,13 +255,19 @@ static void ApplySource(Source s, SourceInput input)
 {
     if (input.Kind is not ("rss" or "x") || string.IsNullOrWhiteSpace(input.Name) || string.IsNullOrWhiteSpace(input.Address) || input.IntervalSeconds is < 30 or > 86400) throw new ArgumentException("来源配置无效");
     if (input.Kind == "rss") Network.Validate(input.Address);
-    s.Kind = input.Kind; s.Name = input.Name; s.Address = input.Address; s.Enabled = input.Enabled; s.IntervalSeconds = input.IntervalSeconds; s.NextRun = Clock.Now;
+    if (input.Priority is < 0 or > 100 || input.FreshnessDays is < 1 or > 365 || input.Category is not ("world" or "crypto" or "technology" or "macro" or "regulation")) throw new ArgumentException("分类、优先级或新鲜度配置无效");
+    var address = input.Topic != "" ? NewsTopics.Url(input.Topic, input.Language, input.Region) : input.Address;
+    var changed = s.Address != address;
+    if (changed) { s.Validation = "unchecked"; s.ETag = ""; s.LastModified = ""; s.ConsecutiveFailures = 0; s.SuspendedUntil = 0; }
+    s.Kind = input.Kind; s.Name = input.Name; s.Address = address; s.Category = input.Category; s.Priority = input.Priority; s.Topic = input.Topic; s.Language = input.Language; s.Region = input.Region; s.Publisher = input.Publisher; s.FreshnessDays = input.FreshnessDays;
+    s.EnableAfterValidation = input.Enabled && s.Kind == "rss" && (s.Validation != "valid" || s.CheckedAt < Clock.Now - 86400);
+    s.Enabled = input.Enabled && !s.EnableAfterValidation; s.IntervalSeconds = input.IntervalSeconds; s.NextRun = Clock.Now;
 }
 public sealed record Login(string Token);
 public sealed record DraftInput(string Content, string[] Channels, string? EventId = null, int? Revision = null);
 public sealed record SettingsInput(bool AutoPaused, int AnalysisDailyLimit = 100, int ChannelDailyLimit = 20);
 public sealed record RuleInput(string Name, string[] Sources, string[] Keywords, string[] Channels, bool Enabled = false, string Account = "default", int DailyLimit = 10, int CooldownMinutes = 15, int StartHour = 0, int EndHour = 24);
-public sealed record SourceInput(string Kind, string Name, string Address, bool Enabled = false, int IntervalSeconds = 60);
+public sealed record SourceInput(string Kind, string Name, string Address, bool Enabled = false, int IntervalSeconds = 60, string Category = "world", int Priority = 50, string Topic = "", string Language = "en", string Region = "US", string Publisher = "", int FreshnessDays = 30);
 public sealed record ResolveInput(string Status, string? RemoteId, string Note);
 public sealed class EventsHub : Hub;
 sealed class ChangeRelay(IServiceScopeFactory scopes, IHubContext<EventsHub> hub) : BackgroundService

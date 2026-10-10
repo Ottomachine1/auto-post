@@ -700,7 +700,15 @@ function App() {
                           <h3>{selected.title}</h3>
                           <p className="muted">{selected.body}</p>
                           <p className="meta">
-                            发布时间 {time(selected.published_at)}
+                            {selected.publisher ||
+                              sources.find((s) => s.id === selected.source)
+                                ?.name ||
+                              selected.source}{" "}
+                            · {selected.language || "und"} ·{" "}
+                            {selected.author || "作者未标注"}
+                            <br />
+                            发布时间 {time(selected.published_at)}{" "}
+                            {selected.publishedEstimated ? "（估计）" : ""}
                             <br />
                             采集时间 {time(selected.collected_at)}
                           </p>
@@ -714,11 +722,42 @@ function App() {
                               查看原始来源 <ArrowUpRight size={14} />
                             </a>
                           )}
+                          <h4>关联来源 · 独立性待人工核验</h4>
+                          <p className="meta">
+                            相似报道与转载归组仅用于去重，不作为已核实证据。
+                          </p>
+                          {detail.data?.related?.map((r: EventItem) => (
+                            <p key={r.id} className="meta">
+                              {safeUrl(r.url) ? (
+                                <a
+                                  href={r.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  {r.publisher || r.source} · {r.title}
+                                </a>
+                              ) : (
+                                r.title
+                              )}{" "}
+                              · {r.relation || "unverified_report"}
+                            </p>
+                          ))}
                           {analysis ? (
                             <>
-                              <h4>核心摘要</h4>
+                              <h4>
+                                核心摘要 · 重要性 {analysis.importance ?? "—"}
+                                /100
+                              </h4>
+                              <p className="meta">
+                                类型 {analysis.claimType || "media_report"} ·
+                                核验 {analysis.verification || "unverified"}
+                              </p>
                               <p>{analysis.summary}</p>
                               {[
+                                ["来源声明的事实", analysis.facts],
+                                ["媒体报道", analysis.reports],
+                                ["预测", analysis.predictions],
+                                ["市场传闻", analysis.rumors],
                                 ["事实依据", analysis.evidence],
                                 ["影响路径 · 推测", analysis.implications],
                                 ["不确定性", analysis.uncertainties],
@@ -1044,7 +1083,27 @@ function App() {
           {page === "sources" && (
             <>
               <div className="section-title">
-                <h2>授权数据源</h2>
+                <h2>多源情报网络 · {sources.length} 个配置</h2>
+                <button
+                  disabled={!connected || busy}
+                  onClick={() =>
+                    void action(async () => {
+                      await api("/sources/catalog", "POST");
+                    })
+                  }
+                >
+                  导入 76 个候选源
+                </button>
+                <button
+                  disabled={!connected || busy}
+                  onClick={() =>
+                    void action(async () => {
+                      await api("/sources/validate-all", "POST");
+                    })
+                  }
+                >
+                  检测未启用来源
+                </button>
                 <button
                   disabled={!connected}
                   onClick={() => {
@@ -1081,9 +1140,11 @@ function App() {
                     </div>
                     <p className="muted break">{s.address}</p>
                     <p className="meta">
-                      {s.kind.toUpperCase()} · 间隔 {s.intervalSeconds}s ·
-                      上次成功 {s.lastSuccess ? time(s.lastSuccess) : "尚无"}{" "}
-                      {s.error}
+                      {s.category || "world"} · 优先级 {s.priority ?? 50} ·{" "}
+                      {s.kind.toUpperCase()} · 间隔 {s.intervalSeconds}s · 检测{" "}
+                      {s.validation || "unchecked"} / HTTP {s.httpStatus || "—"}{" "}
+                      · 连续失败 {s.consecutiveFailures || 0} · 上次成功{" "}
+                      {s.lastSuccess ? time(s.lastSuccess) : "尚无"} {s.error}
                     </p>
                     <button
                       onClick={() => {
@@ -1092,6 +1153,43 @@ function App() {
                       }}
                     >
                       编辑来源
+                    </button>
+                    <button
+                      disabled={busy || s.kind !== "rss"}
+                      onClick={() =>
+                        void action(async () => {
+                          await api(`/sources/${s.id}/validate`, "POST");
+                        })
+                      }
+                    >
+                      检测可用性
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        void action(async () => {
+                          await api(`/sources/${s.id}`, "PUT", {
+                            ...s,
+                            enabled: !s.enabled,
+                          });
+                        })
+                      }
+                    >
+                      {s.enabled
+                        ? "停用"
+                        : s.enableAfterValidation
+                          ? "检测后启用中"
+                          : "检测并启用"}
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        void action(async () => {
+                          await api(`/sources/${s.id}`, "DELETE");
+                        })
+                      }
+                    >
+                      删除来源
                     </button>
                   </div>
                 ))}
@@ -1472,6 +1570,105 @@ function App() {
               }
             />
           </label>
+          {sourceInput.kind === "rss" && (
+            <>
+              <label>
+                Google News 关键词（留空使用直接地址）
+                <input
+                  value={sourceInput.topic || ""}
+                  onChange={(e) => {
+                    const topic = e.target.value;
+                    setSourceInput({
+                      ...sourceInput,
+                      topic,
+                      address: topic
+                        ? "https://news.google.com/rss/search?q=" +
+                          encodeURIComponent(topic) +
+                          "&hl=" +
+                          (sourceInput.language || "en") +
+                          "&gl=" +
+                          (sourceInput.region || "US") +
+                          "&ceid=" +
+                          (sourceInput.region || "US") +
+                          ":" +
+                          (sourceInput.language === "zh-CN" ? "zh-Hans" : "en")
+                        : sourceInput.address,
+                    });
+                  }}
+                />
+              </label>
+              <label>
+                分类
+                <select
+                  value={sourceInput.category || "world"}
+                  onChange={(e) =>
+                    setSourceInput({ ...sourceInput, category: e.target.value })
+                  }
+                >
+                  <option value="world">全球时事</option>
+                  <option value="crypto">加密 Web3</option>
+                  <option value="technology">AI 科技</option>
+                  <option value="macro">宏观金融</option>
+                  <option value="regulation">政策监管</option>
+                </select>
+              </label>
+              <label>
+                优先级（0–100）
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={sourceInput.priority ?? 50}
+                  onChange={(e) =>
+                    setSourceInput({
+                      ...sourceInput,
+                      priority: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <label>
+                语言
+                <select
+                  value={sourceInput.language || "en"}
+                  onChange={(e) =>
+                    setSourceInput({ ...sourceInput, language: e.target.value })
+                  }
+                >
+                  <option value="en">English</option>
+                  <option value="zh-CN">中文</option>
+                </select>
+              </label>
+              <label>
+                地区
+                <select
+                  value={sourceInput.region || "US"}
+                  onChange={(e) =>
+                    setSourceInput({ ...sourceInput, region: e.target.value })
+                  }
+                >
+                  <option value="US">美国</option>
+                  <option value="CN">中国</option>
+                  <option value="GB">英国</option>
+                </select>
+              </label>
+              <label>
+                最大发布年龄（天）
+                <input
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={sourceInput.freshnessDays ?? 30}
+                  onChange={(e) =>
+                    setSourceInput({
+                      ...sourceInput,
+                      freshnessDays: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+            </>
+          )}
           <label>
             采集间隔（秒）
             <input

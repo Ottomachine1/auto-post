@@ -13,7 +13,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
         settings.WorkerHeartbeat = Clock.Now;
         if (!Registration.Demo)
         {
-            foreach (var source in await db.Sources.Where(s => s.Enabled && s.NextRun <= Clock.Now).ToListAsync(ct)) await db.Enqueue("collect", source.Id, ct);
+            foreach (var source in await db.Sources.Where(s => s.Enabled && s.NextRun <= Clock.Now && s.SuspendedUntil <= Clock.Now).OrderByDescending(s => s.Priority).ToListAsync(ct)) await db.Enqueue("collect", source.Id, ct);
             if (Connectors.Env("OPENAI_API_KEY") != "")
                 foreach (var item in await db.Events.Where(e => !e.Demo && e.AnalysisStatus == "pending").OrderBy(e => e.CollectedAt).Take(100).ToListAsync(ct)) await db.Enqueue("analyse", item.Id, ct);
         }
@@ -49,6 +49,19 @@ public sealed class Pipeline(Store db, Connectors connectors)
                 switch (job.Kind)
                 {
                     case "collect":
+                        if (job.Target.StartsWith("validate:"))
+                        {
+                            var check = await db.Sources.FindAsync([job.Target[9..]], ct);
+                            if (check != null)
+                            {
+                                var shouldEnable = check.Enabled || check.EnableAfterValidation;
+                                var valid = await new FeedReader(connectors.Factory).Validate(check, ct);
+                                check.Enabled = valid && shouldEnable; check.EnableAfterValidation = false;
+                                if (check.Enabled) check.NextRun = Clock.Now;
+                                db.Mark("source_validated", check.Id);
+                            }
+                            break;
+                        }
                         var source = await db.Sources.FindAsync([job.Target], ct);
                         if (source is { Enabled: true }) await connectors.Collect(source, ct);
                         break;
@@ -58,13 +71,13 @@ public sealed class Pipeline(Store db, Connectors connectors)
                 job.Status = "done"; job.Error = null;
             }
             catch (RetryLater e) { job.Status = "pending"; job.DueAt = Clock.Now + e.Seconds; job.Error = "等待配额恢复"; }
-            catch (Exception) when (!ct.IsCancellationRequested)
+            catch (Exception error) when (!ct.IsCancellationRequested)
             {
                 job.Status = job.Attempts < 5 && job.Kind != "publish" ? "pending" : "failed";
                 job.DueAt = Clock.Now + Math.Min(3600, 30 * (1 << Math.Min(job.Attempts, 6)));
                 job.Error = "执行失败，请检查配置、平台权限或响应格式";
                 if (job.Kind == "collect" && await db.Sources.FindAsync([job.Target], ct) is { } source)
-                { source.Status = "error"; source.Error = job.Error; source.NextRun = job.DueAt; }
+                { FeedReader.Failure(source, error); job.Status = "done"; source.NextRun = Math.Max(source.NextRun, job.DueAt); }
                 if (job.Kind == "analyse" && await db.Events.FindAsync([job.Target], ct) is { } item)
                     item.AnalysisStatus = job.Status == "failed" ? "failed" : "pending";
             }
@@ -109,7 +122,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
                     await QueuePublish(draft, rule, ct);
                 }
             }
-            if (!matched && !await db.Drafts.AnyAsync(d => d.EventId == id, ct)) NewDraft(parsed.Draft, ["telegram"], id, false);
+            if (!matched && !await db.Drafts.AnyAsync(d => d.EventId == id, ct)) NewDraft(parsed.Draft, parsed.Importance >= 70 && parsed.SuggestedChannels is { Length: > 0 } ? parsed.SuggestedChannels : ["telegram"], id, false);
             db.Mark("analysis", id); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
         }
     }

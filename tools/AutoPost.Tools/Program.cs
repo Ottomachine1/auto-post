@@ -7,6 +7,33 @@ var options = new DbContextOptionsBuilder<Store>().UseNpgsql(Registration.Connec
 await using var db = new Store(options);
 if (args.Length == 0) throw new ArgumentException("Commands: migrate | seed-demo | import-sqlite <path> | benchmark");
 if (args[0] == "migrate") { await db.Database.MigrateAsync(); return; }
+if (args[0] == "feed-catalog")
+{
+    if (args.Length < 2) throw new ArgumentException("feed-catalog <json> [validate] [enable-valid]");
+    var sources = Json.Read<Source[]>(await File.ReadAllTextAsync(args[1]));
+    foreach (var source in sources)
+        if (!await db.Sources.AnyAsync(s => s.Id == source.Id)) { source.Enabled = false; db.Sources.Add(source); }
+    await db.SaveChangesAsync();
+    if (args.Contains("validate"))
+    {
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+        Registration.AddAutoPost(services, Registration.Connection);
+        await using var provider = Microsoft.Extensions.DependencyInjection.ServiceCollectionContainerBuilderExtensions.BuildServiceProvider(services);
+        var factory = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IHttpClientFactory>(provider);
+        await Parallel.ForEachAsync(sources, new ParallelOptions { MaxDegreeOfParallelism = 4 }, async (entry, ct) =>
+        {
+            await using var checkDb = new Store(options); var source = await checkDb.Sources.SingleAsync(s => s.Id == entry.Id, ct);
+            var valid = await new FeedReader(factory).Validate(source, ct);
+            source.Enabled = valid && args.Contains("enable-valid"); source.NextRun = Clock.Now;
+            await checkDb.SaveChangesAsync(ct);
+            Console.WriteLine(Json.Write(new { source.Id, source.Name, source.HttpStatus, source.Validation, source.Error, source.LatestPublishedAt, source.Enabled }));
+        });
+    }
+    var ids = sources.Select(s => s.Id).ToArray();
+    var report = await db.Sources.AsNoTracking().Where(s => ids.Contains(s.Id)).OrderBy(s => s.Category).ThenBy(s => s.Name).ToListAsync();
+    await File.WriteAllTextAsync(Environment.GetEnvironmentVariable("FEED_REPORT_PATH") ?? Path.Combine(Path.GetTempPath(), "feed-validation-report.json"), Json.Write(report));
+    Console.WriteLine($"Candidates={report.Count}; valid={report.Count(s => s.Validation == "valid")}; enabled={report.Count(s => s.Enabled)}"); return;
+}
 if (args[0] == "seed-demo")
 {
     var titles = new[] { "全球宏观观察：政策预期与风险资产", "比特币生态观察：资金流向与网络活动", "AI 与加密基础设施：关注叙事变化", "全球能源：供需与市场传导" };

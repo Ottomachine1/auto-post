@@ -188,6 +188,50 @@ public sealed class WorkflowTests : IAsyncLifetime
         await new Pipeline(db, new Connectors(factory, db)).Analyse(item.Id, default);
         Assert.Empty(await db.Deliveries.ToListAsync()); Assert.Null((await db.Drafts.SingleAsync()).ApprovedRevision);
     }
+    [Fact]
+    public void GoogleTopicsEncodeAndRejectInvalidLocale()
+    {
+        var url = NewsTopics.Url("gold & oil / CPI", "zh-CN", "CN");
+        Assert.Contains("q=gold%20%26%20oil%20%2F%20CPI", url); Assert.Contains("ceid=CN:zh-Hans", url);
+        Assert.Throws<ArgumentException>(() => NewsTopics.Url("", "en", "US"));
+        Assert.Throws<ArgumentException>(() => NewsTopics.Url("gold", "bad", "US"));
+    }
+    [Fact]
+    public async Task FeedValidationAndConditionalNotModified()
+    {
+        var source = new Source { Address = "https://example.com/feed" };
+        var now = DateTimeOffset.UtcNow.ToString("R");
+        factory.Responses.Enqueue($"<rss version='2.0'><channel><title>News</title><link>https://example.com</link><description>News</description><item><guid>1</guid><title>Story</title><pubDate>{now}</pubDate></item></channel></rss>");
+        Assert.True(await new FeedReader(factory).Validate(source, default)); Assert.Equal("valid", source.Validation);
+        source.ETag = "\"v1\""; factory.Status = HttpStatusCode.NotModified;
+        Assert.True((await new FeedReader(factory).Fetch(source, true, default)).NotModified);
+    }
+    [Fact]
+    public async Task InvalidFeedCannotBeEnabledAndBacksOff()
+    {
+        var source = new Source { Address = "https://example.com/feed", Enabled = true };
+        factory.Responses.Enqueue("<html>Blocked</html>");
+        Assert.False(await new FeedReader(factory).Validate(source, default)); Assert.False(source.Enabled);
+        var first = source.NextRun; FeedReader.Failure(source, new FeedFailure("http_429", 500)); FeedReader.Failure(source, new FeedFailure("http_503"));
+        Assert.Equal("suspended", source.Status); Assert.True(source.SuspendedUntil > first); Assert.Equal(3, source.ConsecutiveFailures);
+    }
+    [Fact]
+    public void SimilarityDoesNotTreatUnrelatedStoriesAsIdentical()
+    {
+        Assert.True(EventSimilarity.Title("Bitcoin ETF receives regulatory approval today", "Today Bitcoin ETF receives regulatory approval") > .88);
+        Assert.Equal(0, EventSimilarity.Title("Bitcoin price rises", "New AI chips released"));
+        Assert.Equal(1, EventSimilarity.Cosine([1, 0, 0], [1, 0, 0])); Assert.Equal(0, EventSimilarity.Cosine([float.NaN], [1]));
+    }
+    [Fact]
+    public async Task RestrictedFeedAndStaleFeedFailPreflight()
+    {
+        var source = new Source { Address = "https://example.com/feed" };
+        factory.Status = HttpStatusCode.Forbidden;
+        Assert.False(await new FeedReader(factory).Validate(source, default)); Assert.Equal("access_restricted", source.Error);
+        factory.Status = HttpStatusCode.OK;
+        factory.Responses.Enqueue("<rss version='2.0'><channel><title>Old</title><link>https://example.com</link><description>Old</description><item><title>Old story</title><pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate></item></channel></rss>");
+        Assert.False(await new FeedReader(factory).Validate(source, default)); Assert.Equal("stale_feed", source.Error);
+    }
     public sealed record IdResult(string Id);
 }
 public sealed class HttpClientFactory : IHttpClientFactory

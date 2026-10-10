@@ -34,6 +34,13 @@ export async function session() {
   return true;
 }
 export type EventItem = {
+  author?: string;
+  language?: string;
+  originalSummary?: string;
+  publisher?: string;
+  evidenceKey?: string;
+  relation?: string;
+  publishedEstimated?: boolean;
   id: string;
   source: string;
   title: string;
@@ -47,6 +54,20 @@ export type EventItem = {
   analysisStatus: string;
 };
 export type Source = {
+  category?: string;
+  priority?: number;
+  topic?: string;
+  language?: string;
+  region?: string;
+  publisher?: string;
+  validation?: string;
+  checkedAt?: number;
+  latestPublishedAt?: number;
+  httpStatus?: number;
+  consecutiveFailures?: number;
+  suspendedUntil?: number;
+  freshnessDays?: number;
+  enableAfterValidation?: boolean;
   id: string;
   kind: string;
   name: string;

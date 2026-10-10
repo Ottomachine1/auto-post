@@ -59,6 +59,7 @@ public static class Registration
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, MaxResponseHeadersLength = 32 });
         services.AddHttpClient("rss", c => c.Timeout = TimeSpan.FromSeconds(20))
             .ConfigurePrimaryHttpMessageHandler(Network.SafeHandler);
+        services.AddScoped<FeedReader>();
         services.AddScoped<Connectors>();
         services.AddScoped<Pipeline>();
         return services;

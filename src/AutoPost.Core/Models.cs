@@ -11,6 +11,15 @@ public static class Json
 public abstract class Entity { public string Id { get; set; } = Guid.NewGuid().ToString("N"); }
 public sealed class Event : Entity
 {
+    public string Author { get; set; } = "";
+    public string Language { get; set; } = "und";
+    public string OriginalSummary { get; set; } = "";
+    public string Publisher { get; set; } = "";
+    public string EvidenceKey { get; set; } = "";
+    public string Relation { get; set; } = "unverified_report";
+    public bool PublishedEstimated { get; set; }
+    public string Embedding { get; set; } = "[]";
+    public string EmbeddingModel { get; set; } = "";
     public string Source { get; set; } = "";
     public string SourceId { get; set; } = "";
     public string Title { get; set; } = "";
@@ -88,6 +97,22 @@ public sealed class Rule : Entity
 }
 public sealed class Source : Entity
 {
+    public string Category { get; set; } = "world";
+    public int Priority { get; set; } = 50;
+    public string Topic { get; set; } = "";
+    public string Language { get; set; } = "en";
+    public string Region { get; set; } = "US";
+    public string Publisher { get; set; } = "";
+    public string ETag { get; set; } = "";
+    public string LastModified { get; set; } = "";
+    public int ConsecutiveFailures { get; set; }
+    public long SuspendedUntil { get; set; }
+    public long? CheckedAt { get; set; }
+    public long? LatestPublishedAt { get; set; }
+    public int? HttpStatus { get; set; }
+    public string Validation { get; set; } = "unchecked";
+    public bool EnableAfterValidation { get; set; }
+    public int FreshnessDays { get; set; } = 30;
     public string Kind { get; set; } = "rss";
     public string Name { get; set; } = "";
     public string Address { get; set; } = "";
@@ -145,7 +170,7 @@ public static class Clock
     public static string Day => DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).ToString("yyyy-MM-dd");
     public static long DayStart => new DateTimeOffset(DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(8)).Date, TimeSpan.FromHours(8)).ToUnixTimeSeconds();
 }
-public sealed record AnalysisResult(string Summary, string[] Implications, string[] Uncertainties, string Draft, string[]? Evidence = null, string? Category = null);
+public sealed record AnalysisResult(string Summary, string[] Implications, string[] Uncertainties, string Draft, string[]? Evidence = null, string? Category = null, int Importance = 0, string ClaimType = "media_report", string[]? Facts = null, string[]? Reports = null, string[]? Predictions = null, string[]? Rumors = null, string[]? SuggestedChannels = null, string Verification = "unverified");
 public static class Rules
 {
     public static string? Rejection(Rule rule, Event item, int hour)
