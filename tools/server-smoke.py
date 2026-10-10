@@ -15,6 +15,8 @@ req('/session','POST',{'token':values['ADMIN_TOKEN']})
 result['cookieSecure']=all(c.secure for c in jar if c.name=='atlas-session')
 csrf=req('/session')[0]['csrfToken'];headers={'X-CSRF-TOKEN':csrf}
 status=req('/status')[0];result.update(events=status['events'],sources=len(status['sources']),enabled=sum(s['enabled'] for s in status['sources']),autoPaused=status['settings']['autoPaused'],modelConfigured=status['ai_configured'],embeddingConfigured=status.get('embedding_configured',False))
+result['databaseProvider']=status.get('databaseProvider')
+result['binanceConfigured']=next((c['configured'] for c in status['channels'] if c['id']=='binance'),False)
 page=req('/events/page')[0];result['firstPage']=len(page['items']);result['historyCursor']=bool(page['nextCursor'])
 if page['nextCursor']:
  from urllib.parse import quote
