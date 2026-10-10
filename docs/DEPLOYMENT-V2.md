@@ -40,8 +40,8 @@ docker compose --env-file .env -f deploy/compose.dotnet.yaml exec -T postgres pg
 
 核对关键表数量、草稿版本和投递状态；不要把演练库接入Worker。会话密钥单独备份，私有环境配置不得进入GitHub。SQLite导入命令`dotnet run --project tools/AutoPost.Tools -- import-sqlite /absolute/path/legacy.db`，重复执行应保持记录数不变；所有旧草稿隔离。
 
-## 本机已准备的公网切换
+## 已完成的公网切换
 
-指定服务器原有 Cloudflare Origin 证书覆盖 `*.maxson.cc`；候选配置复用该证书（不复制私钥）。此配置要求域名继续由 Cloudflare 代理，并使用严格源站 HTTPS。切换候选为 `/mnt/storage/auto-post/Caddyfile.candidate`，原配置备份为 `/mnt/storage/auto-post/backups/Caddyfile.before-auto-post`。共享代理重启前需确认现有站点的短暂影响窗口。
+指定服务器原有 Cloudflare Origin 证书覆盖 `*.maxson.cc`；候选配置复用该证书（不复制私钥）。此配置要求域名继续由 Cloudflare 代理，并使用严格源站 HTTPS。切换候选为 `/mnt/storage/auto-post/Caddyfile.candidate`，原配置备份为 `/mnt/storage/auto-post/backups/Caddyfile.before-auto-post`。共享代理已在用户批准后重启，公网健康检查及20路WebSocket连接通过。
 
-已验证的镜像运行版本为 fc28fb5；后续提交的浏览器测试修正和部署记录不改变运行代码。
+当前运行源码397f9b4，镜像标签0.3.1，目录 `/mnt/storage/auto-post/releases/v0.3.1`。私有环境文件 `/mnt/storage/auto-post/private.env` 使用 RELEASE_TAG=0.3.1、APP_MODE=live。旧0.2.0/0.3.0版本保留；回滚须同时调整私有镜像标签并核对投递状态，不能直接恢复旧发布器。共享备份目录 `/mnt/storage/auto-post/backups`。本地开发路径为 `D:\Project\auto-post`。

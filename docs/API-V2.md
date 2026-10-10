@@ -35,3 +35,12 @@
 来源输入：`kind:"rss"/"x",name,address,enabled:false,intervalSeconds:60`。来源白名单为配置ID。
 
 X预检URL按23、CJK按2，复杂emoji可能保守拒绝，最终限制以平台为准。Telegram纯文本最多4096 Unicode字符。其余渠道人工导出。
+
+## RSS/Atom 来源扩展
+
+- `POST /api/sources/catalog`：导入缺失的76个候选，默认关闭。
+- `POST /api/sources/validate-all`、`POST /api/sources/{id}/validate`：排队预检，首次启用须通过。
+- `DELETE /api/sources/{id}`：删除；有正在运行的来源任务时拒绝。
+- `POST /api/sources/topic-url`：生成Google News关键词订阅地址。
+
+来源支持分类、优先级、间隔、主题及地区语言；返回检测时间、最新发布时间、HTTP状态、ETag、Last-Modified与退避状态。关键词通过来源CRUD管理，服务端统一生成地址。详见RSS-NETWORK.md和当前端点实现。
