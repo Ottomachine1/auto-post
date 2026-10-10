@@ -6,7 +6,7 @@ test('floating agent, session persistence and cancellation controls',async({page
  const panel=page.getByRole('dialog');await expect(panel.getByRole('heading',{name:'情报 Agent',exact:true})).toBeVisible();
  await panel.getByRole('navigation',{name:'Agent 快捷操作'}).getByRole('button',{name:'最新情报',exact:true}).click();
  await expect(panel.getByRole('button',{name:'停止任务'})).toBeVisible();
- await panel.getByRole('button',{name:'停止任务'}).click();await expect(panel.getByText('已停止',{exact:true})).toBeVisible();
- await panel.getByRole('button',{name:'会话历史',exact:true}).click();await expect(panel.getByRole('button',{name:/最新情报/})).toBeVisible();
+ await panel.getByRole('button',{name:'停止任务'}).click();await expect(panel.getByText('已停止',{exact:true}).first()).toBeVisible();
+ await panel.getByRole('button',{name:'会话历史',exact:true}).click();await expect(panel.locator('.agent-history').getByRole('button',{name:/最新情报/})).toBeVisible();
  await panel.getByRole('button',{name:'关闭 Agent',exact:true}).click();await expect(page.getByRole('button',{name:'打开情报 Agent',exact:true})).toBeFocused();
 });
