@@ -8,14 +8,14 @@ namespace AutoPost.Infrastructure;
 
 public sealed partial class Connectors
 {
-    private async Task<string[]> UploadX(Attachment[] attachments, CancellationToken ct)
+    private async Task<string[]> UploadX(Attachment[] attachments, string token, CancellationToken ct)
     {
         var ids = new List<string>();
         foreach (var attachment in attachments)
         {
             var asset = await db.Media.SingleAsync(m => m.Id == attachment.Id && m.Demo == Registration.Demo, ct);
             using var req = new HttpRequestMessage(HttpMethod.Post,"https://api.x.com/2/media/upload");
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Env("X_USER_ACCESS_TOKEN"));
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             req.Content = JsonContent.Create(new { media = asset.Data, media_category = "tweet_image" });
             using var response = await factory.CreateClient("platform").SendAsync(req, ct);
             response.EnsureSuccessStatusCode();

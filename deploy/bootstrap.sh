@@ -4,6 +4,9 @@ set -eu
 cd "$(dirname "$0")/.."
 root=/mnt/storage/auto-post
 mkdir -p "$root/state/postgres" "$root/state/keys"
+mkdir -p "$root/state/oauth"
+chown 1654:1654 "$root/state/oauth"
+chmod 700 "$root/state/oauth"
 mkdir -p "$root/backups"
 chmod 700 "$root/backups"
 if [ ! -e backups ]; then ln -s "$root/backups" backups; fi

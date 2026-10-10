@@ -1208,6 +1208,7 @@ function App() {
                 {status.data?.channels.map((c: any) => (
                   <div className="panel content-card" key={c.id}>
                     <h3>{c.label}</h3>
+                    {c.id === "x" && <small>{status.data.xAuthorizationMode === "oauth_refresh" ? "OAuth 刷新已配置 · 有效性以投递结果为准" : status.data.xAuthorizationMode === "static_token" ? "静态用户令牌 · 到期后需更新授权" : "尚未配置用户发布授权"}</small>}
                     <p className="muted">
                       {c.mode === "manual_export"
                         ? "人工导出 · 待授权内容 API"

@@ -142,6 +142,7 @@ api.MapGet("/status", async (Store db) => new
     cloudDatabaseStatus = db.MySql ? "connected" : "pending_certificate_verification",
     ai_configured = Connectors.Env("OPENAI_API_KEY") != "",
     embedding_configured = Connectors.Env("OPENAI_API_KEY") != "" && Connectors.Env("EMBEDDING_MODEL") != "",
+    xAuthorizationMode = XAuthorization.RefreshConfigured ? "oauth_refresh" : Connectors.Env("X_USER_ACCESS_TOKEN")!="" ? "static_token" : "unconfigured",
     channels = Connectors.Channels.Select(c => new { id = c, label = c, mode = c is "x" or "telegram" or "binance" ? "api" : "manual_export", configured = Connectors.Configured(c) }),
     events = await db.Events.CountAsync(e => e.Demo == Registration.Demo),
     queue = await db.Jobs.GroupBy(j => j.Status).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync(),

@@ -22,7 +22,7 @@ public sealed partial class Connectors(IHttpClientFactory factory, Store db)
     public static readonly string[] Channels = ["x", "telegram", "binance", "okx", "truth"];
     public static bool Configured(string channel) => channel switch
     {
-        "x" => Env("X_USER_ACCESS_TOKEN").Length > 0,
+        "x" => Env("X_USER_ACCESS_TOKEN").Length > 0 || XAuthorization.RefreshConfigured,
         "binance" => Env("BINANCE_SQUARE_OPENAPI_KEY").Length > 0,
         "telegram" => Env("TELEGRAM_BOT_TOKEN").Length > 0 && Env("TELEGRAM_CHAT_ID").Length > 0,
         _ => false
@@ -203,8 +203,9 @@ public sealed partial class Connectors(IHttpClientFactory factory, Store db)
         if (!Configured(channel)) throw new InvalidOperationException("渠道凭据未配置");
         if (ContentError(channel, content, attachments.Length>0) is { } error) throw new InvalidOperationException(error);
         using var req = channel == "x" ? new HttpRequestMessage(HttpMethod.Post, "https://api.x.com/2/tweets") : new HttpRequestMessage(HttpMethod.Post, "https://api.telegram.org/bot" + Env("TELEGRAM_BOT_TOKEN") + "/sendMessage");
-        if (channel == "x") req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Env("X_USER_ACCESS_TOKEN"));
-        var mediaIds = channel == "x" ? await UploadX(attachments, ct) : [];
+        var xToken = channel == "x" ? await new XAuthorization(factory).AccessToken(ct) : "";
+        if (channel == "x") req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", xToken);
+        var mediaIds = channel == "x" ? await UploadX(attachments, xToken, ct) : [];
         var post = new Dictionary<string,object>();
         if (!string.IsNullOrWhiteSpace(content)) post["text"] = content;
         if (mediaIds.Length > 0) post["media"] = new { media_ids = mediaIds };

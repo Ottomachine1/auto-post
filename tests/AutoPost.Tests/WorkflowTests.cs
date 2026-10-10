@@ -319,7 +319,7 @@ public sealed partial class WorkflowTests : IAsyncLifetime
 }
 public sealed class HttpClientFactory : IHttpClientFactory
 {
-    public List<string> Bodies { get; } = []; public int Calls; public List<string> Urls { get; } = []; public Queue<string> Responses { get; } = []; public HttpStatusCode Status = HttpStatusCode.OK;
+    public List<string> Bodies { get; } = []; public int Calls; public List<string> Urls { get; } = []; public List<string> Authorizations { get; } = []; public Queue<string> Responses { get; } = []; public HttpStatusCode Status = HttpStatusCode.OK;
     public Func<CancellationToken,Task>? BeforeReply { get; set; }
     public HttpClient CreateClient(string name) => new(new Handler(this));
     private sealed class Handler(HttpClientFactory owner) : HttpMessageHandler
@@ -327,6 +327,7 @@ public sealed class HttpClientFactory : IHttpClientFactory
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             owner.Calls++; owner.Urls.Add(request.RequestUri!.ToString()); owner.Bodies.Add(request.Content==null?"":await request.Content.ReadAsStringAsync(ct));
+            owner.Authorizations.Add(request.Headers.Authorization?.ToString()??"");
             if(owner.BeforeReply!=null) await owner.BeforeReply(ct);
             return new HttpResponseMessage(owner.Status) { Content = new StringContent(owner.Responses.Count > 0 ? owner.Responses.Dequeue() : "{}", System.Text.Encoding.UTF8, "application/json") };
         }

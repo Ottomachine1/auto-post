@@ -53,6 +53,10 @@ services:
       dockerfile: deploy/Dockerfile.dotnet
       target: worker
     env_file: ../.env
+    environment:
+      X_OAUTH_STATE_PATH: /oauth/x.json
+    volumes:
+      - oauth:/oauth
     depends_on:
       postgres: {condition: service_healthy}
     restart: unless-stopped
@@ -61,6 +65,11 @@ services:
     cap_drop: [ALL]
     networks: [atlas]
 volumes:
+  oauth:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_ROOT:-/mnt/storage/auto-post/state}/oauth
   postgres-data:
     driver_opts:
       type: none
