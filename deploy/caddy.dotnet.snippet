@@ -1,0 +1,18 @@
+# Append to the existing Caddyfile only after backup and validation.
+auto-post.maxson.cc {
+    tls force_automate {
+        issuer acme {
+            disable_http_challenge
+        }
+    }
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Robots-Tag "noindex, nofollow, noarchive"
+        -Server
+    }
+    reverse_proxy 172.19.0.1:8091 {
+        header_up Host auto-post.maxson.cc
+        header_up X-Forwarded-Proto https
+    }
+}

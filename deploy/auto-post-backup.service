@@ -1,0 +1,6 @@
+[Unit]
+Description=Auto-post PostgreSQL backup
+[Service]
+Type=oneshot
+WorkingDirectory=/mnt/storage/auto-post/current
+ExecStart=/bin/sh deploy/backup.sh
