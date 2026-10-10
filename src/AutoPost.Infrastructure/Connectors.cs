@@ -90,7 +90,7 @@ public sealed partial class Connectors(IHttpClientFactory factory, Store db)
                     var published = e.PublishDate != default ? e.PublishDate : e.LastUpdatedTime;
                     var publisher = e.SourceFeed?.Title?.Text ?? e.ElementExtensions.FirstOrDefault(x => x.OuterName == "source")?.GetObject<System.Xml.Linq.XElement>()?.Value;
                     var title = e.Title?.Text ?? "Untitled";
-                    var summary = Network.Text(e.Summary?.Text ?? "");
+                var summary = Network.Text(e.Summary?.Text ?? (e.Content as TextSyndicationContent)?.Text ?? "");
                     await AddEvent(new Event
                     {
                         Source = source.Id,

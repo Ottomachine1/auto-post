@@ -16,6 +16,7 @@ public sealed class FeedReader(IHttpClientFactory factory)
 {
     public async Task<FeedDocument> Fetch(Source source, bool conditional, CancellationToken ct)
     {
+        source.HttpStatus = null;
         using var request = new HttpRequestMessage(HttpMethod.Get, Network.Validate(source.Address));
         request.Headers.UserAgent.ParseAdd("AutoPostIntelligence/0.3 (+https://auto-post.maxson.cc)");
         request.Headers.Accept.ParseAdd("application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9");

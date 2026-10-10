@@ -253,8 +253,9 @@ static void ApplyRule(Rule r, RuleInput input)
 }
 static void ApplySource(Source s, SourceInput input)
 {
-    if (input.Kind is not ("rss" or "x") || string.IsNullOrWhiteSpace(input.Name) || string.IsNullOrWhiteSpace(input.Address) || input.IntervalSeconds is < 30 or > 86400) throw new ArgumentException("来源配置无效");
-    if (input.Kind == "rss") Network.Validate(input.Address);
+    if (input.Kind is not ("rss" or "x") || string.IsNullOrWhiteSpace(input.Name) || (string.IsNullOrWhiteSpace(input.Address) && string.IsNullOrWhiteSpace(input.Topic)) || input.IntervalSeconds is < 30 or > 86400) throw new ArgumentException("来源配置无效");
+    if (input.Kind == "rss") Network.Validate(input.Topic != "" ? NewsTopics.Url(input.Topic, input.Language, input.Region) : input.Address);
+    else if (input.Topic != "") throw new ArgumentException("关键词订阅只支持 RSS");
     if (input.Priority is < 0 or > 100 || input.FreshnessDays is < 1 or > 365 || input.Category is not ("world" or "crypto" or "technology" or "macro" or "regulation")) throw new ArgumentException("分类、优先级或新鲜度配置无效");
     var address = input.Topic != "" ? NewsTopics.Url(input.Topic, input.Language, input.Region) : input.Address;
     var changed = s.Address != address;

@@ -128,6 +128,7 @@ public sealed class Source : Entity
 }
 public sealed class Job : Entity
 {
+    public int Priority { get; set; } = 50;
     public string Kind { get; set; } = "";
     public string Target { get; set; } = "";
     public string Status { get; set; } = "pending";

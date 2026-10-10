@@ -232,6 +232,26 @@ public sealed class WorkflowTests : IAsyncLifetime
         factory.Responses.Enqueue("<rss version='2.0'><channel><title>Old</title><link>https://example.com</link><description>Old</description><item><title>Old story</title><pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate></item></channel></rss>");
         Assert.False(await new FeedReader(factory).Validate(source, default)); Assert.Equal("stale_feed", source.Error);
     }
+    [Fact]
+    public async Task EnablingNewFeedQueuesPreflightInsteadOfCollecting()
+    {
+        using var app = new WebApplicationFactory<Program>(); using var client = app.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new("Bearer", Token);
+        var response = await client.PostAsJsonAsync("/api/sources", new { kind = "rss", name = "Test", address = "https://example.com/feed", enabled = true, category = "macro", priority = 90 });
+        response.EnsureSuccessStatusCode();
+        await using var db = Db(); var source = await db.Sources.SingleAsync();
+        Assert.False(source.Enabled); Assert.True(source.EnableAfterValidation);
+        Assert.Equal("validate:" + source.Id, (await db.Jobs.SingleAsync()).Target);
+    }
+    [Fact]
+    public async Task AtomFeedPreservesAuthorAndLanguage()
+    {
+        await using var db = Db(); var source = new Source { Address = "https://example.com/atom", Enabled = true, Category = "technology" }; db.Sources.Add(source); await db.SaveChangesAsync();
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        factory.Responses.Enqueue($"<feed xmlns='http://www.w3.org/2005/Atom' xml:lang='en'><title>AI</title><id>urn:feed</id><updated>{now}</updated><entry><id>urn:item</id><title>AI model released</title><updated>{now}</updated><author><name>Research Lab</name></author><summary>New research</summary><link href='https://example.com/research'/></entry></feed>");
+        await new Connectors(factory, db).Collect(source, default);
+        var item = await db.Events.SingleAsync(); Assert.Equal("Research Lab", item.Author); Assert.Equal("en", item.Language); Assert.Equal("科技", item.Category); Assert.Equal("New research", item.OriginalSummary);
+    }
     public sealed record IdResult(string Id);
 }
 public sealed class HttpClientFactory : IHttpClientFactory

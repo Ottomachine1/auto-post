@@ -13,7 +13,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
         settings.WorkerHeartbeat = Clock.Now;
         if (!Registration.Demo)
         {
-            foreach (var source in await db.Sources.Where(s => s.Enabled && s.NextRun <= Clock.Now && s.SuspendedUntil <= Clock.Now).OrderByDescending(s => s.Priority).ToListAsync(ct)) await db.Enqueue("collect", source.Id, ct);
+            foreach (var source in await db.Sources.Where(s => s.Enabled && s.NextRun <= Clock.Now && s.SuspendedUntil <= Clock.Now).OrderByDescending(s => s.Priority).ToListAsync(ct)) { var scheduled = await db.Enqueue("collect", source.Id, ct); scheduled.Priority = source.Priority; }
             if (Connectors.Env("OPENAI_API_KEY") != "")
                 foreach (var item in await db.Events.Where(e => !e.Demo && e.AnalysisStatus == "pending").OrderBy(e => e.CollectedAt).Take(100).ToListAsync(ct)) await db.Enqueue("analyse", item.Id, ct);
         }
@@ -24,7 +24,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
         await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"Jobs\" SET \"Status\"='pending', \"LeaseOwner\"=NULL WHERE \"Status\"='running' AND \"LeaseUntil\" < {Clock.Now}", ct);
         if (kind is null or "publish") await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"Deliveries\" SET \"Status\"='unknown',\"Error\"='进程中断，请人工核验',\"UpdatedAt\"={Clock.Now} WHERE \"Status\"='sending'", ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
-        var job = await db.Jobs.FromSqlInterpolated($"SELECT * FROM \"Jobs\" WHERE \"Status\"='pending' AND \"DueAt\" <= {Clock.Now} AND ({kind}::text IS NULL OR \"Kind\"={kind}) ORDER BY \"DueAt\" FOR UPDATE SKIP LOCKED LIMIT 1").FirstOrDefaultAsync(ct);
+        var job = await db.Jobs.FromSqlInterpolated($"SELECT * FROM \"Jobs\" WHERE \"Status\"='pending' AND \"DueAt\" <= {Clock.Now} AND ({kind}::text IS NULL OR \"Kind\"={kind}) ORDER BY \"Priority\" DESC, \"DueAt\" FOR UPDATE SKIP LOCKED LIMIT 1").FirstOrDefaultAsync(ct);
         if (job != null)
         {
             job.Status = "running"; job.Attempts++; job.LeaseUntil = Clock.Now + 1800; job.LeaseOwner = Environment.MachineName + ":" + Environment.ProcessId;

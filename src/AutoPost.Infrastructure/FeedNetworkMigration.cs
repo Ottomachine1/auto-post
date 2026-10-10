@@ -24,3 +24,11 @@ CREATE INDEX ON "Sources" ("Enabled","NextRun","Priority");
     }
     protected override void Down(MigrationBuilder m) => throw new NotSupportedException("Restore a verified backup.");
 }
+
+[DbContext(typeof(Store))]
+[Migration("202610100003_WorkerPriority")]
+public sealed class WorkerPriorityMigration : Migration
+{
+    protected override void Up(MigrationBuilder m) => m.Sql("ALTER TABLE \"Jobs\" ADD COLUMN \"Priority\" integer NOT NULL DEFAULT 50");
+    protected override void Down(MigrationBuilder m) => throw new NotSupportedException("Restore a verified backup.");
+}
