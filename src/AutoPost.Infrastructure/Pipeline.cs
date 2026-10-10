@@ -29,12 +29,9 @@ public sealed class Pipeline(Store db, Connectors connectors)
         FormattableString query = db.MySql
             ? (FormattableString)$"SELECT * FROM `Jobs` WHERE `Status`='pending' AND `DueAt` <= {Clock.Now} AND ({kind} IS NULL OR `Kind`={kind}) ORDER BY `Priority` DESC, `DueAt` LIMIT 1 FOR UPDATE SKIP LOCKED"
             : $"SELECT * FROM \"Jobs\" WHERE \"Status\"='pending' AND \"DueAt\" <= {Clock.Now} AND ({kind}::text IS NULL OR \"Kind\"={kind}) ORDER BY \"Priority\" DESC, \"DueAt\" FOR UPDATE SKIP LOCKED LIMIT 1";
-        Job? job = null;
-        for (var attempt = 0; attempt < 20; attempt++) {
-            job = (await db.Jobs.FromSqlInterpolated(query).ToListAsync(ct)).FirstOrDefault();
-            if (job != null || !db.MySql || !await db.Jobs.AnyAsync(j=>j.Status=="pending" && j.DueAt<=Clock.Now && (kind==null || j.Kind==kind),ct)) break;
-            await Task.Delay(20,ct);
-        }
+        // SKIP LOCKED can legitimately return no row under contention.
+        // Release this transaction before the worker retries; retaining scan locks here stalls peers.
+        var job = (await db.Jobs.FromSqlInterpolated(query).ToListAsync(ct)).FirstOrDefault();
         if (job != null)
         {
             job.Status = "running"; job.Attempts++; job.LeaseUntil = Clock.Now + 1800; job.LeaseOwner = Environment.MachineName + ":" + Environment.ProcessId;

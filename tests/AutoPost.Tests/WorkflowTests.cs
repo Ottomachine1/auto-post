@@ -58,8 +58,18 @@ public sealed partial class WorkflowTests : IAsyncLifetime
     public async Task ConcurrentClaimsAreUnique()
     {
         await using (var db = Db()) { for (var i = 0; i < 10; i++) db.Jobs.Add(new Job { Kind = "analyse", Target = i.ToString() }); await db.SaveChangesAsync(); }
-        var ids = await Task.WhenAll(Enumerable.Range(0, 10).Select(async _ => { await using var db = Db(); return (await new Pipeline(db, new Connectors(factory, db)).Claim(default))?.Id; }));
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        var ids = await Task.WhenAll(Enumerable.Range(0, 10).Select(async _ => {
+            while (true) {
+                timeout.Token.ThrowIfCancellationRequested();
+                await using var db = Db();
+                var job = await new Pipeline(db, new Connectors(factory, db)).Claim(timeout.Token);
+                if (job != null) return job.Id;
+                await Task.Delay(25, timeout.Token);
+            }
+        }));
         Assert.Equal(10, ids.Distinct().Count()); Assert.All(ids, id => Assert.NotNull(id));
+        await using var check = Db(); Assert.Equal(10, await check.Jobs.CountAsync(j=>j.Status=="running" && j.Attempts==1));
     }
     [Fact]
     public async Task ExpiredLeaseRecoversAndSendingBecomesUnknown()
