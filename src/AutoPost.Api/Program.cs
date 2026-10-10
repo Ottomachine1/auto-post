@@ -118,6 +118,15 @@ api.MapPost("/events/{id}/analysis", async (string id, Store db) =>
     if (item.Demo) throw new InvalidOperationException("演示事件不调用真实模型");
     item.AnalysisStatus = "pending"; var job = await db.Enqueue("analyse", id); return Results.Accepted(value: new { taskId = job.Id, status = "queued" });
 });
+api.MapPost("/events/{id}/translation", async (string id, Store db) =>
+{
+    var item = await db.Events.SingleOrDefaultAsync(e => e.Id == id && !e.Demo && !Registration.Demo) ?? throw new ArgumentException("真实事件不存在");
+    if (item.TranslationStatus is "completed" or "native") return Results.Ok(new { status = item.TranslationStatus });
+    item.TranslationStatus = "pending";
+    var job = await db.Enqueue("translate", id); job.Priority = 100; job.DueAt = Clock.Now;
+    db.Mark("translation_retry", id);
+    return Results.Accepted(value: new { taskId = job.Id, status = "queued" });
+});
 api.MapGet("/changes", async (Store db, long? after) => await db.Changes.AsNoTracking().Where(c => c.Id > (after ?? 0)).OrderBy(c => c.Id).Take(200).ToListAsync());
 api.MapGet("/stream", async (HttpContext ctx, IServiceScopeFactory scopes) =>
 {
@@ -257,8 +266,8 @@ app.MapHub<EventsHub>("/hubs/events").RequireAuthorization();
 app.UseDefaultFiles(); app.UseStaticFiles(); app.MapFallbackToFile("index.html");
 await app.RunAsync();
 
-static IOrderedQueryable<Event> Query(Store db, string? source, string? q, string? category) => db.Events.AsNoTracking().Where(e => e.Demo == Registration.Demo && (source == null || source == "" || e.Source == source) && (category == null || category == "" || e.Category == category) && (q == null || q == "" || e.Title.ToLower().Contains(q.ToLower()) || e.Body.ToLower().Contains(q.ToLower()))).OrderByDescending(e => e.PublishedAt).ThenByDescending(e => e.Id);
-static object EventDto(Event e) => new { e.Id, e.Source, source_id = e.SourceId, e.Title, e.Body, e.Url, e.Category, published_at = e.PublishedAt, collected_at = e.CollectedAt, e.Demo, e.GroupId, e.AnalysisStatus, e.Author, e.Language, e.OriginalSummary, e.Publisher, e.EvidenceKey, e.Relation, e.PublishedEstimated };
+static IOrderedQueryable<Event> Query(Store db, string? source, string? q, string? category) => db.Events.AsNoTracking().Where(e => e.Demo == Registration.Demo && (source == null || source == "" || e.Source == source) && (category == null || category == "" || e.Category == category) && (q == null || q == "" || e.Title.ToLower().Contains(q.ToLower()) || e.Body.ToLower().Contains(q.ToLower()) || e.ChineseTitle.Contains(q) || e.ChineseBody.Contains(q))).OrderByDescending(e => e.PublishedAt).ThenByDescending(e => e.Id);
+static object EventDto(Event e) => new { e.Id, e.Source, source_id = e.SourceId, e.Title, e.Body, e.Url, e.Category, published_at = e.PublishedAt, collected_at = e.CollectedAt, e.Demo, e.GroupId, e.AnalysisStatus, e.Author, e.Language, e.OriginalSummary, e.Publisher, e.EvidenceKey, e.Relation, e.PublishedEstimated, e.ChineseTitle, e.ChineseBody, e.TranslationStatus, e.TranslationEngine };
 static async Task<Draft> GetDraft(Store db, string id) => await db.Drafts.SingleOrDefaultAsync(d => d.Id == id && (d.Demo == Registration.Demo || d.Quarantined)) ?? throw new ArgumentException("草稿不存在");
 static void ValidateDraft(DraftInput input)
 {

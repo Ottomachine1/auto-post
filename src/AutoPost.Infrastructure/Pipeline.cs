@@ -16,6 +16,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
         if (!Registration.Demo)
         {
             foreach (var source in await db.Sources.Where(s => s.Enabled && s.NextRun <= Clock.Now && s.SuspendedUntil <= Clock.Now).OrderByDescending(s => s.Priority).ToListAsync(ct)) { var scheduled = await db.Enqueue("collect", source.Id, ct); scheduled.Priority = source.Priority; }
+            foreach (var item in await db.Events.Where(e => !e.Demo && e.TranslationStatus == "pending").OrderByDescending(e => e.CollectedAt).Take(100).ToListAsync(ct)) await db.Enqueue("translate", item.Id, ct);
             if (Connectors.Env("OPENAI_API_KEY") != "")
                 foreach (var item in await db.Events.Where(e => !e.Demo && e.AnalysisStatus == "pending").OrderBy(e => e.CollectedAt).Take(100).ToListAsync(ct)) await db.Enqueue("analyse", item.Id, ct);
         }
@@ -44,7 +45,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
         // A session lock guarantees one active worker even if a second container starts.
         await using DbConnection leader = db.MySql ? new MySqlConnection(Registration.Connection) : new NpgsqlConnection(Registration.Connection);
         await leader.OpenAsync(ct);
-        var laneLock = kind switch { "collect" => 794122, "analyse" => 794123, "publish" => 794124, "agent" => 794125, _ => throw new ArgumentException("Unknown lane") };
+        var laneLock = kind switch { "collect" => 794122, "analyse" => 794123, "publish" => 794124, "agent" => 794125, "translate" => 794126, _ => throw new ArgumentException("Unknown lane") };
         await using var command = leader.CreateCommand();
         command.CommandText = db.MySql ? "SELECT GET_LOCK('autopost-lane-" + laneLock + "',0)" : "SELECT pg_try_advisory_lock(" + laneLock + ")";
         var acquired = await command.ExecuteScalarAsync(ct);
@@ -74,6 +75,10 @@ public sealed class Pipeline(Store db, Connectors connectors)
                         var source = await db.Sources.FindAsync([job.Target], ct);
                         if (source is { Enabled: true }) await connectors.Collect(source, ct);
                         break;
+                    case "translate":
+                        var translation = await db.Events.FindAsync([job.Target], ct);
+                        if (translation is { Demo: false }) { await LocalTranslation.Run(translation, connectors.Factory, ct); db.Mark("translation", translation.Id); }
+                        break;
                     case "analyse": await Analyse(job.Target, ct); break;
                     case "publish": await Publish(job.Target, ct); break;
                     case "agent": await new AgentService(db,connectors,this).Run(job,ct); break;
@@ -88,6 +93,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
                 job.Error = "执行失败，请检查配置、平台权限或响应格式";
                 if (job.Kind == "collect" && await db.Sources.FindAsync([job.Target], ct) is { } source)
                 { FeedReader.Failure(source, error); job.Status = "done"; source.NextRun = Math.Max(source.NextRun, job.DueAt); }
+                if (job.Kind == "translate" && await db.Events.FindAsync([job.Target], ct) is { } translated) translated.TranslationStatus = job.Status == "failed" ? "failed" : "pending";
                 if (job.Kind == "analyse" && await db.Events.FindAsync([job.Target], ct) is { } item)
                     item.AnalysisStatus = job.Status == "failed" ? "failed" : "pending";
             }

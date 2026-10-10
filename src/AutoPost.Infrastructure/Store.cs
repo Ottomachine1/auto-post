@@ -38,6 +38,7 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
         b.Entity<Event>().HasIndex(x => new { x.Demo, x.PublishedAt, x.Id });
         b.Entity<Event>().HasIndex(x => x.Fingerprint);
         b.Entity<Event>().HasIndex(x => x.GroupId);
+        b.Entity<Event>().HasIndex(x => new { x.TranslationStatus, x.CollectedAt });
         b.Entity<Analysis>().HasIndex(x => x.EventId).IsUnique();
         b.Entity<DraftVersion>().HasIndex(x => new { x.DraftId, x.Revision }).IsUnique();
         b.Entity<Draft>().HasIndex(x => new { x.EventId, x.RuleId }).IsUnique().HasFilter(MySql ? null : "\"RuleId\" IS NOT NULL");
@@ -94,6 +95,7 @@ public static class Registration
         services.AddDbContext<Store>(o => Configure(o, connection));
         services.AddHttpClient("platform", c => c.Timeout = TimeSpan.FromSeconds(65))
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false, MaxResponseHeadersLength = 32 });
+        services.AddHttpClient("translation", c => c.Timeout = TimeSpan.FromSeconds(180));
         services.AddHttpClient("rss", c => c.Timeout = TimeSpan.FromSeconds(20))
             .ConfigurePrimaryHttpMessageHandler(Network.SafeHandler);
         services.AddScoped<FeedReader>();

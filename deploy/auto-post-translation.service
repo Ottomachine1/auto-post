@@ -1,0 +1,28 @@
+[Unit]
+Description=AutoPost offline Chinese machine translation
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=autopost-translation
+Group=autopost-translation
+WorkingDirectory=/mnt/storage/auto-post/translation
+Environment=XDG_DATA_HOME=/mnt/storage/auto-post/translation-data
+Environment=XDG_CACHE_HOME=/mnt/storage/auto-post/translation-cache
+Environment=TRANSLATION_BIND=172.30.86.1
+Environment=OMP_NUM_THREADS=1
+Environment=ARGOS_DEVICE_TYPE=cpu
+ExecStart=/mnt/storage/auto-post/translation-venv/bin/python server.py
+Restart=on-failure
+RestartSec=10
+MemoryMax=768M
+CPUQuota=75%
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/mnt/storage/auto-post/translation-cache
+
+[Install]
+WantedBy=multi-user.target

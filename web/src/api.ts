@@ -34,6 +34,10 @@ export async function session() {
   return true;
 }
 export type EventItem = {
+  chineseTitle?: string;
+  chineseBody?: string;
+  translationStatus?: string;
+  translationEngine?: string;
   author?: string;
   language?: string;
   originalSummary?: string;

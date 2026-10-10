@@ -8,7 +8,7 @@ await builder.Build().RunAsync();
 
 sealed class Runner(IServiceScopeFactory scopes, ILogger<Runner> logger) : BackgroundService
 {
-    protected override Task ExecuteAsync(CancellationToken stoppingToken) => Task.WhenAll(new[] { "collect", "analyse", "publish", "agent" }.Select(kind => RunLane(kind, stoppingToken)));
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) => Task.WhenAll(new[] { "collect", "analyse", "publish", "agent", "translate" }.Select(kind => RunLane(kind, stoppingToken)));
     private async Task RunLane(string kind, CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)

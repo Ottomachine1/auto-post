@@ -219,6 +219,7 @@ function App() {
     queryFn: () => api("/events/" + selected!.id),
     enabled: connected && !!selected && !selected.demo,
   });
+  useEffect(() => { if (detail.data?.item && detail.data.item.id === selected?.id) setSelected(detail.data.item); }, [detail.data]);
   const tasks = useQuery({
     queryKey: ["tasks"],
     queryFn: () => api<any[]>("/tasks"),
@@ -234,7 +235,7 @@ function App() {
       ? feed.data?.pages.flatMap((p) => p.items) || []
       : demo.filter(
           (e) =>
-            (!search || (e.title + e.body).includes(search)) &&
+            (!search || (e.title + e.body + (e.chineseTitle || "") + (e.chineseBody || "")).includes(search)) &&
             (!category || e.category === category),
         )
   ).filter((e) => page !== "watch" || watch.includes(e.id));
@@ -612,9 +613,10 @@ function App() {
                                       <span className="sample">DEMO</span>
                                     )}
                                   </div>
-                                  <h3>{e.title}</h3>
-                                  <p>{e.body}</p>
+                                  <h3>{e.chineseTitle || e.title}</h3>
+                                  <p>{e.chineseBody || e.body}</p>
                                   <div className="event-footer">
+                                    <span>{e.translationStatus === "completed" ? "中文机译" : e.translationStatus === "native" ? "中文原文" : e.translationStatus === "failed" ? "翻译失败" : "待翻译"}</span>
                                     <span>
                                       {statusName[e.analysisStatus] || "待分析"}
                                     </span>
@@ -704,8 +706,11 @@ function App() {
                       ) : (
                         <>
                           <span className="eyebrow">SOURCE CONTEXT</span>
-                          <h3>{selected.title}</h3>
-                          <p className="muted">{selected.body}</p>
+                          <h3>{selected.chineseTitle || selected.title}</h3>
+                          <p className="muted">{selected.chineseBody || selected.body}</p>
+                          <p className="meta">{selected.translationStatus === "completed" ? "本地机器翻译 · 请核对原文" : selected.translationStatus === "native" ? "中文原文" : selected.translationStatus === "failed" ? "翻译失败，当前展示原文" : "等待本地翻译，当前展示原文"}</p>
+                          {selected.translationStatus === "failed" && !selected.demo && <button onClick={() => action(() => api("/events/" + selected.id + "/translation", "POST"))}>重试本地翻译</button>}
+                          {selected.chineseTitle && selected.translationStatus !== "native" && <details><summary>查看原文</summary><h4>{selected.title}</h4><p>{selected.body}</p></details>}
                           <p className="meta">
                             {selected.publisher ||
                               sources.find((s) => s.id === selected.source)

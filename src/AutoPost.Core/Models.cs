@@ -11,6 +11,10 @@ public static class Json
 public abstract class Entity { public string Id { get; set; } = Guid.NewGuid().ToString("N"); }
 public sealed class Event : Entity
 {
+    public string ChineseTitle { get; set; } = "";
+    public string ChineseBody { get; set; } = "";
+    public string TranslationStatus { get; set; } = "pending";
+    public string TranslationEngine { get; set; } = "";
     public string Author { get; set; } = "";
     public string Language { get; set; } = "und";
     public string OriginalSummary { get; set; } = "";
