@@ -1,0 +1,14 @@
+# Append to the existing Caddyfile only after backup and validation.
+auto-post.maxson.cc {
+    tls /data/certs/clothes-cloudflare-origin.pem /data/certs/clothes-cloudflare-origin.key
+    encode zstd gzip
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Robots-Tag "noindex, nofollow, noarchive"
+        -Server
+    }
+    reverse_proxy 172.19.0.1:8091 {
+        header_up Host auto-post.maxson.cc
+        header_up X-Forwarded-Proto https
+    }
+}

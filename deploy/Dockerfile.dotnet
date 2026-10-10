@@ -1,0 +1,35 @@
+FROM node:24-alpine AS web
+WORKDIR /build/web
+COPY web/package*.json ./
+RUN npm ci --registry=https://registry.npmjs.org
+COPY web/ ./
+RUN npm run build
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /source
+COPY Directory.Build.props ./
+COPY config/ config/
+COPY src/ src/
+COPY tools/ tools/
+RUN dotnet publish src/AutoPost.Api -c Release -o /out/api && dotnet publish src/AutoPost.Worker -c Release -o /out/worker && dotnet publish tools/AutoPost.Tools -c Release -o /out/tools
+COPY --from=web /build/src/AutoPost.Api/wwwroot /out/api/wwwroot
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS api
+WORKDIR /app
+COPY --from=build /out/api ./
+USER $APP_UID
+ENV ASPNETCORE_URLS=http://+:8080 DOTNET_GCHeapHardLimit=0x10000000
+ENTRYPOINT ["dotnet","AutoPost.Api.dll"]
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS worker
+WORKDIR /app
+COPY --from=build /out/worker ./
+USER $APP_UID
+ENV DOTNET_GCHeapHardLimit=0x10000000
+ENTRYPOINT ["dotnet","AutoPost.Worker.dll"]
+
+FROM mcr.microsoft.com/dotnet/runtime:10.0 AS tools
+WORKDIR /app
+COPY --from=build /out/tools ./
+USER $APP_UID
+ENTRYPOINT ["dotnet","AutoPost.Tools.dll"]

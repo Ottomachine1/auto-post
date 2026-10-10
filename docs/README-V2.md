@@ -2,9 +2,7 @@
 
 全球情报采集、来源溯源、模型分析、人工创作及白名单发布工作台。
 
-v0.5.5 使用 **.NET 10 + React / TypeScript + PostgreSQL**，包含持久任务、图片编辑器和支持选择模型的悬浮Agent。本地默认演示模式，自动规则默认关闭；没有真实凭据时不伪造分析、采集或发布成功。
-
-生产验收与剩余接入项见 [上线完成度](docs/RELEASE-GATES.md)，登录方式见 [管理访问令牌](docs/ADMIN-ACCESS.md)。
+v0.2 使用 **.NET 10 + React / TypeScript + PostgreSQL**。默认演示模式，自动规则默认关闭；没有真实凭据时不伪造分析、采集或发布成功。
 
 ![深色实时工作台](docs/console-v2.png)
 
@@ -58,7 +56,3 @@ npm run test:e2e --prefix web
 旧Python和部署模板保留供迁移核对，新版只使用`deploy/compose.dotnet.yaml`。不要同时运行旧、新发布器。
 
 首期单管理员、每渠道一个default账号、中文分析、纯文本发布。Truth暂无真实采集，币安/OKX/Truth人工导出；X为最近搜索，OAuth自动刷新未实现，过期授权会阻止投递。
-
-## v0.4 创作与云数据库适配
-
-新增普通推文式图片编辑器、X/币安图片发布适配，以及MySQL 8.4兼容和完整字段核对导入工具。详见 [创作与云数据库说明](docs/COMPOSER-CLOUD.md)。远端MySQL切换须先提供受信任CA证书，当前生产数据库状态以验收记录为准。

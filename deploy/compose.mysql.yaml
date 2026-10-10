@@ -1,0 +1,46 @@
+# External MySQL only. Use after verified offline transfer and explicit identity trust.
+name: auto-post
+services:
+  api:
+    image: auto-post-api:${RELEASE_TAG:?Set RELEASE_TAG}
+    env_file: ../.env
+    ports: ['127.0.0.1:8090:8080']
+    volumes: [keys:/keys]
+    restart: unless-stopped
+    mem_limit: 384m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [atlas]
+  worker:
+    image: auto-post-worker:${RELEASE_TAG:?Set RELEASE_TAG}
+    env_file: ../.env
+    environment:
+      X_OAUTH_STATE_PATH: /oauth/x.json
+    volumes: [oauth:/oauth]
+    restart: unless-stopped
+    mem_limit: 384m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [atlas]
+  migrate:
+    image: auto-post-tools:${RELEASE_TAG:?Set RELEASE_TAG}
+    env_file: ../.env
+    command: [migrate]
+    volumes: ['${DATA_ROOT:-/mnt/storage/auto-post/state}/transfer:/transfer']
+    profiles: [tools]
+    networks: [atlas]
+volumes:
+  oauth:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_ROOT:-/mnt/storage/auto-post/state}/oauth
+  keys:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_ROOT:-/mnt/storage/auto-post/state}/keys
+networks:
+  atlas:
+    ipam:
+      config: [{subnet: 172.30.86.0/24}]
