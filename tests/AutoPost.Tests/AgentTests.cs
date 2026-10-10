@@ -63,9 +63,12 @@ public sealed partial class WorkflowTests
         Assert.Empty(await db.Drafts.ToListAsync()); Assert.Empty(await db.Deliveries.ToListAsync());
         Assert.Equal("done",(await db.Jobs.FindAsync(job.Id))!.Status);
     }
-    [Fact] public async Task AgentCancellationDuringModelCommitsNoDraft() {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AgentCancellationDuringModelCommitsNoDraft(bool waitForMonitor) {
         Environment.SetEnvironmentVariable("OPENAI_MODEL","test-model");await using var db=Db();db.Events.Add(new Event{Title="BTC"});await db.SaveChangesAsync();var(message,job)=await AgentTask(db,"draft","BTC");AgentResponse();
-        factory.BeforeReply=async ct=>{await using var other=Db();var row=await other.AgentMessages.FindAsync(message.Id);row!.CancelRequested=true;await other.SaveChangesAsync();await Task.Delay(1600,ct);};
+        factory.BeforeReply=async ct=>{await using var other=Db();var row=await other.AgentMessages.FindAsync(message.Id);row!.CancelRequested=true;await other.SaveChangesAsync();if(waitForMonitor) await Task.Delay(1600,ct);};
         var p=new Pipeline(db,new Connectors(factory,db));await new AgentService(db,new Connectors(factory,db),p).Run(job,default);db.ChangeTracker.Clear();Assert.Equal("cancelled",(await db.AgentMessages.FindAsync(message.Id))!.Status);Assert.Empty(await db.Drafts.ToListAsync());Assert.Empty(await db.Deliveries.ToListAsync());
     }
     [Fact] public async Task AgentApiIdempotencyAndModeIsolation() {
