@@ -84,6 +84,6 @@ public static class NewsTopics
     {
         if (string.IsNullOrWhiteSpace(topic) || topic.Length > 300 || language is not ("en" or "zh-CN") || region is not ("US" or "CN" or "GB")) throw new ArgumentException("关键词或语言地区无效");
         var edition = language == "zh-CN" ? "zh-Hans" : "en";
-        return "https://news.google.com/rss/search?q=" + Uri.EscapeDataString(topic.Trim()) + "&hl=" + language + "&gl=" + region + "&ceid=" + region + ":" + edition;
+        return "https://news.google.com/rss/search?q=" + Uri.EscapeDataString(topic.Trim()) + "&hl=" + (language == "en" ? "en-" + region : language) + "&gl=" + region + "&ceid=" + region + ":" + edition;
     }
 }
