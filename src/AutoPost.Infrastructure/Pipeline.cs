@@ -47,7 +47,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
         // A session lock guarantees one active worker even if a second container starts.
         await using DbConnection leader = db.MySql ? new MySqlConnection(Registration.Connection) : new NpgsqlConnection(Registration.Connection);
         await leader.OpenAsync(ct);
-        var laneLock = kind switch { "collect" => 794122, "analyse" => 794123, "publish" => 794124, _ => throw new ArgumentException("Unknown lane") };
+        var laneLock = kind switch { "collect" => 794122, "analyse" => 794123, "publish" => 794124, "agent" => 794125, _ => throw new ArgumentException("Unknown lane") };
         await using var command = leader.CreateCommand();
         command.CommandText = db.MySql ? "SELECT GET_LOCK('autopost-lane-" + laneLock + "',0)" : "SELECT pg_try_advisory_lock(" + laneLock + ")";
         var acquired = await command.ExecuteScalarAsync(ct);
@@ -79,6 +79,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
                         break;
                     case "analyse": await Analyse(job.Target, ct); break;
                     case "publish": await Publish(job.Target, ct); break;
+                    case "agent": await new AgentService(db,connectors,this).Run(job,ct); break;
                 }
                 job.Status = "done"; job.Error = null;
             }

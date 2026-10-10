@@ -43,6 +43,7 @@ import {
 import { useRealtime } from "./realtime";
 import "./style.css";
 import {Composer,MediaGrid} from "./Composer";
+import {AgentPanel} from "./AgentPanel";
 import type {Attachment} from "./api";
 
 const queryClient = new QueryClient({
@@ -1229,6 +1230,7 @@ function App() {
             <>
               <div className="panel content-card">
                 <h2>运行状态与预算</h2>
+                <p className="muted">{status.data?.mode==="live"?"真实数据生产模式":"演示模式"} · {status.data?.cloudDatabaseStatus==="connected"?"云数据库已连接":"云数据库待证书核验，当前数据库正常运行"}</p>
                 <p className="muted">
                   Worker 心跳：
                   {status.data?.settings.workerHeartbeat
@@ -1275,10 +1277,11 @@ function App() {
           <footer>
             <span>◈ SIGNAL ATLAS</span>
             <span>Capture context. Publish with confidence.</span>
-            <span>v0.2 / .NET 10</span>
+            <span>v0.5 / .NET 10</span>
           </footer>
         </main>
       </div>
+      <AgentPanel connected={connected} event={selected} onLogin={()=>setLogin(true)} onDraft={()=>{setPage("drafts");void qc.invalidateQueries({queryKey:["drafts"]})}}/>
       <Modal
         open={login}
         onOpen={setLogin}

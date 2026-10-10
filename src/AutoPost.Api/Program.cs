@@ -88,6 +88,7 @@ api.AddEndpointFilter(async (ctx, next) =>
     var result = await next(ctx); await db.SaveChangesAsync(); await tx.CommitAsync(); return result;
 });
 api.MapGet("/session", (HttpContext ctx, IAntiforgery csrf) => new { csrfToken = csrf.GetAndStoreTokens(ctx).RequestToken });
+api.MapAgent();
 api.MapDelete("/session", async (HttpContext ctx) => { await ctx.SignOutAsync("session"); return Results.Ok(); });
 api.MapGet("/events", async (Store db, string? source, string? q, int? limit) =>
     (await Query(db, source, q, null).Take(Math.Clamp(limit ?? 50, 1, 200)).ToListAsync()).Select(EventDto));
@@ -138,6 +139,7 @@ api.MapGet("/status", async (Store db) => new
     sources = await db.Sources.ToListAsync(),
     settings = await db.Settings.SingleAsync(),
     databaseProvider = db.MySql ? "mysql" : "postgres",
+    cloudDatabaseStatus = db.MySql ? "connected" : "pending_certificate_verification",
     ai_configured = Connectors.Env("OPENAI_API_KEY") != "",
     embedding_configured = Connectors.Env("OPENAI_API_KEY") != "" && Connectors.Env("EMBEDDING_MODEL") != "",
     channels = Connectors.Channels.Select(c => new { id = c, label = c, mode = c is "x" or "telegram" or "binance" ? "api" : "manual_export", configured = Connectors.Configured(c) }),

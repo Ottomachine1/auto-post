@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 // Explicit offline transfer. Stop both writers first. Existing rows are never overwritten.
 internal static class DatabaseTransfer
 {
-    private static readonly Type[] Tables = [typeof(Event),typeof(Analysis),typeof(Draft),typeof(DraftVersion),typeof(Delivery),typeof(Rule),typeof(Source),typeof(Job),typeof(Change),typeof(Audit),typeof(Settings),typeof(Budget),typeof(MediaAsset)];
+    private static readonly Type[] Tables = [typeof(Event),typeof(Analysis),typeof(Draft),typeof(DraftVersion),typeof(Delivery),typeof(Rule),typeof(Source),typeof(Job),typeof(Change),typeof(Audit),typeof(Settings),typeof(Budget),typeof(MediaAsset),typeof(AgentSession),typeof(AgentMessage)];
     public static async Task Run(Store db,string command,string file)
     {
         var document = new Dictionary<string,JsonElement>();

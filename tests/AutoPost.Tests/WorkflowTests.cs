@@ -10,7 +10,7 @@ using Xunit;
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 namespace AutoPost.Tests;
 
-public sealed class WorkflowTests : IAsyncLifetime
+public sealed partial class WorkflowTests : IAsyncLifetime
 {
     private const string Token = "integration-test-token-at-least-32-characters";
     private static readonly string Connection = Environment.GetEnvironmentVariable("TEST_DATABASE_URL") ?? "Host=127.0.0.1;Port=55432;Database=autopost_tests;Username=postgres;Password=autopost-local-only";
@@ -310,12 +310,14 @@ public sealed class WorkflowTests : IAsyncLifetime
 public sealed class HttpClientFactory : IHttpClientFactory
 {
     public List<string> Bodies { get; } = []; public int Calls; public List<string> Urls { get; } = []; public Queue<string> Responses { get; } = []; public HttpStatusCode Status = HttpStatusCode.OK;
+    public Func<CancellationToken,Task>? BeforeReply { get; set; }
     public HttpClient CreateClient(string name) => new(new Handler(this));
     private sealed class Handler(HttpClientFactory owner) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             owner.Calls++; owner.Urls.Add(request.RequestUri!.ToString()); owner.Bodies.Add(request.Content==null?"":await request.Content.ReadAsStringAsync(ct));
+            if(owner.BeforeReply!=null) await owner.BeforeReply(ct);
             return new HttpResponseMessage(owner.Status) { Content = new StringContent(owner.Responses.Count > 0 ? owner.Responses.Dequeue() : "{}", System.Text.Encoding.UTF8, "application/json") };
         }
     }

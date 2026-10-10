@@ -9,6 +9,8 @@ namespace AutoPost.Infrastructure;
 public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
 {
     public bool MySql => Database.ProviderName?.Contains("MySql") == true;
+    public DbSet<AgentSession> AgentSessions => Set<AgentSession>();
+    public DbSet<AgentMessage> AgentMessages => Set<AgentMessage>();
     public DbSet<MediaAsset> Media => Set<MediaAsset>();
     public DbSet<Event> Events => Set<Event>();
     public DbSet<Analysis> Analyses => Set<Analysis>();
@@ -25,6 +27,9 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<AgentSession>().HasIndex(x => new { x.Demo, x.UpdatedAt });
+        b.Entity<AgentMessage>().HasIndex(x => new { x.SessionId, x.CreatedAt });
+        b.Entity<AgentMessage>().HasIndex(x => new { x.SessionId, x.RequestId }).IsUnique();
         if (!MySql) b.Entity<Event>().HasIndex(x => new { x.Source, x.SourceId }).IsUnique();
         else {
             b.Entity<Event>().Property<string>("SourceIdentity").HasMaxLength(64).HasComputedColumnSql("sha2(concat(length(`Source`), ':', `Source`, `SourceId`),256)", stored: true);
@@ -94,6 +99,7 @@ public static class Registration
         services.AddScoped<FeedReader>();
         services.AddScoped<Connectors>();
         services.AddScoped<Pipeline>();
+        services.AddScoped<AgentService>();
         return services;
     }
     public static DbContextOptionsBuilder Configure(DbContextOptionsBuilder options, string connection) {
