@@ -1,3 +1,4 @@
+import {ModelPicker} from './ModelPicker';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -63,6 +64,7 @@ const statusName: Record<string, string> = {
   pending: "待处理",
   running: "执行中",
   done: "完成",
+  cancelled: "已停止",
   completed: "分析完成",
   connected: "在线",
   error: "异常",
@@ -1795,6 +1797,7 @@ function Budget({
   status: any;
   action: (fn: () => Promise<unknown>) => Promise<void>;
 }) {
+  const [analysisModel,setAnalysisModel]=useState(status?.settings.analysisModel||''),[agentModel,setAgentModel]=useState(status?.settings.agentModel||'');
   const [analysis, setAnalysis] = useState(
       status?.settings.analysisDailyLimit || 100,
     ),
@@ -1807,6 +1810,7 @@ function Budget({
         void action(() =>
           api("/settings", "PUT", {
             ...status.settings,
+            analysisModel, agentModel,
             analysisDailyLimit: analysis,
             channelDailyLimit: channel,
           }),
@@ -1833,7 +1837,9 @@ function Budget({
           onChange={(e) => setChannel(Number(e.target.value))}
         />
       </label>
-      <button>保存预算</button>
+      <ModelPicker label="后台情报分析模型" value={analysisModel} onChange={setAnalysisModel}/>
+      <ModelPicker label="Agent 默认模型" value={agentModel} onChange={setAgentModel}/>
+      <button>保存模型与预算</button>
     </form>
   );
 }

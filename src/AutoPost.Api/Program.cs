@@ -147,10 +147,13 @@ api.MapGet("/status", async (Store db) => new
     queue = await db.Jobs.GroupBy(j => j.Status).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync(),
     usage = await db.Budgets.Where(b => b.Id.EndsWith(Clock.Day)).ToListAsync()
 });
-api.MapPut("/settings", async (SettingsInput input, Store db) =>
+api.MapPut("/settings", async (SettingsInput input, Store db, IHttpClientFactory factory, CancellationToken ct) =>
 {
     if (input.AnalysisDailyLimit is < 0 or > 10000 || input.ChannelDailyLimit is < 0 or > 10000) throw new ArgumentException("限额应在0至10000之间");
-    var setting = await db.Settings.SingleAsync(); setting.AutoPaused = input.AutoPaused; setting.AnalysisDailyLimit = input.AnalysisDailyLimit; setting.ChannelDailyLimit = input.ChannelDailyLimit;
+    await ModelCatalog.Validate(input.AnalysisModel,factory,ct); await ModelCatalog.Validate(input.AgentModel,factory,ct);
+    var setting = await db.Settings.SingleAsync();
+    if(input.AnalysisModel!=null) setting.AnalysisModel=input.AnalysisModel; if(input.AgentModel!=null) setting.AgentModel=input.AgentModel;
+    setting.AutoPaused = input.AutoPaused; setting.AnalysisDailyLimit = input.AnalysisDailyLimit; setting.ChannelDailyLimit = input.ChannelDailyLimit;
     db.Mark("settings", "global"); return Results.Ok(setting);
 });
 api.MapPost("/media", async (MediaInput input, Store db) => {
@@ -281,7 +284,7 @@ static void ApplySource(Source s, SourceInput input)
 }
 public sealed record Login(string Token);
 public sealed record DraftInput(string Content, string[] Channels, string? EventId = null, int? Revision = null, Attachment[]? Media = null);
-public sealed record SettingsInput(bool AutoPaused, int AnalysisDailyLimit = 100, int ChannelDailyLimit = 20);
+public sealed record SettingsInput(bool AutoPaused, int AnalysisDailyLimit = 100, int ChannelDailyLimit = 20, string? AnalysisModel = null, string? AgentModel = null);
 public sealed record RuleInput(string Name, string[] Sources, string[] Keywords, string[] Channels, bool Enabled = false, string Account = "default", int DailyLimit = 10, int CooldownMinutes = 15, int StartHour = 0, int EndHour = 24);
 public sealed record SourceInput(string Kind, string Name, string Address, bool Enabled = false, int IntervalSeconds = 60, string Category = "world", int Priority = 50, string Topic = "", string Language = "en", string Region = "US", string Publisher = "", int FreshnessDays = 30);
 public sealed record ResolveInput(string Status, string? RemoteId, string Note);

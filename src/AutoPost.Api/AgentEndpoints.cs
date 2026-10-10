@@ -6,8 +6,9 @@ public static class AgentEndpoints
 {
     public static void MapAgent(this RouteGroupBuilder api)
     {
+        api.MapGet("/ai/models", async (IHttpClientFactory factory, CancellationToken ct) => Results.Ok(new { items=await ModelCatalog.List(factory,ct) }));
         api.MapGet("/agent/status", async (Store db) => new {
-            configured = Connectors.Env("OPENAI_API_KEY") != "", model = Connectors.Env("OPENAI_MODEL"),
+            configured = Connectors.Env("OPENAI_API_KEY") != "", model = ModelCatalog.Resolve((await db.Settings.SingleAsync()).AgentModel),
             dailyLimit = AgentService.DailyLimit, used = (await db.Budgets.FindAsync("agent:" + Clock.Day))?.Used ?? 0,
             cloudDatabase = db.MySql ? "connected" : "pending_certificate_verification",
             capabilities = new[] { "latest", "search", "refresh", "analyse", "draft" }
@@ -26,7 +27,7 @@ public static class AgentEndpoints
             var rows=await query.OrderByDescending(m=>m.CreatedAt).ThenByDescending(m=>m.Id).Take(101).ToListAsync();
             return Results.Ok(new { items=rows.Take(100).Reverse(), nextCursor=rows.Count>100?rows[99].Id:null });
         });
-        api.MapPost("/agent/sessions/{id}/messages", async (string id, AgentInput input, Store db) => {
+        api.MapPost("/agent/sessions/{id}/messages", async (string id, AgentInput input, Store db, IHttpClientFactory factory, CancellationToken ct) => {
             var session=await Session(db,id);
             if (input.Action is not ("latest" or "search" or "refresh" or "analyse" or "draft") || string.IsNullOrWhiteSpace(input.RequestId) || input.RequestId.Length>100 || input.Prompt==null || input.Prompt.Length>4000) throw new ArgumentException("Agent 请求无效");
             var duplicate=await db.AgentMessages.SingleOrDefaultAsync(m=>m.SessionId==id && m.RequestId==input.RequestId);
@@ -34,18 +35,22 @@ public static class AgentEndpoints
             if (await db.AgentMessages.AnyAsync(m=>m.SessionId==id && (m.Status=="queued" || m.Status=="running" || m.Status=="waiting_quota"))) throw new InvalidOperationException("请先停止或等待当前任务");
             if (input.EventId!=null && !await db.Events.AnyAsync(e=>e.Id==input.EventId && e.Demo==Registration.Demo)) throw new ArgumentException("事件不可用");
             if (input.Action=="analyse" && input.EventId==null) throw new ArgumentException("请先选择事件");
-            var row=new AgentMessage { SessionId=id,RequestId=input.RequestId,Prompt=input.Prompt.Trim(),Action=input.Action,EventId=input.EventId };
+            await ModelCatalog.Validate(input.Model,factory,ct);
+            var row=new AgentMessage { Model=ModelCatalog.Resolve(input.Model ?? (await db.Settings.SingleAsync(ct)).AgentModel), SessionId=id,RequestId=input.RequestId,Prompt=input.Prompt.Trim(),Action=input.Action,EventId=input.EventId };
             session.Title=string.IsNullOrWhiteSpace(row.Prompt)?"最新情报":row.Prompt[..Math.Min(40,row.Prompt.Length)]; session.UpdatedAt=Clock.Now;
             db.AgentMessages.Add(row); await db.Enqueue("agent",row.Id); db.Mark("agent",row.Id,"queued"); return Results.Accepted(value:row);
         });
         api.MapGet("/agent/tasks/{id}", async (string id, Store db) => { var row=await Message(db,id); return Results.Ok(row); });
         api.MapPost("/agent/tasks/{id}/cancel", async (string id, Store db) => {
-            var row=await Message(db,id); row.CancelRequested=true;
-            if (row.Status is "queued" or "waiting_quota") { row.Status="cancelled"; row.Progress="已停止"; }
+            var row=await Message(db,id);
+            if(row.Status is "completed" or "failed" or "cancelled") return Results.Ok(row);
+            row.CancelRequested=true;
+            if (row.Status is "queued" or "waiting_quota") { row.Status="cancelled"; row.Progress="已停止";
+                foreach(var job in await db.Jobs.Where(j=>j.Kind=="agent" && j.Target==id && j.Status=="pending").ToListAsync()) job.Status="cancelled"; }
             row.UpdatedAt=Clock.Now; db.Mark("agent",id,"cancel_requested"); return Results.Ok(row);
         });
     }
     private static async Task<AgentSession> Session(Store db,string id) => await db.AgentSessions.SingleOrDefaultAsync(s=>s.Id==id && s.Demo==Registration.Demo) ?? throw new ArgumentException("会话不可用");
     private static async Task<AgentMessage> Message(Store db,string id) { var row=await db.AgentMessages.SingleOrDefaultAsync(m=>m.Id==id) ?? throw new ArgumentException("任务不可用"); await Session(db,row.SessionId); return row; }
-    public sealed record AgentInput(string Action,string Prompt,string RequestId,string? EventId);
+    public sealed record AgentInput(string Action,string Prompt,string RequestId,string? EventId, string? Model = null);
 }

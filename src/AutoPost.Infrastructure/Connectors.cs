@@ -167,14 +167,15 @@ public sealed partial class Connectors(IHttpClientFactory factory, Store db)
         db.Mark("embedding", item.Id, Json.Write(new { model, usage = root.TryGetProperty("usage", out var usage) ? usage.GetRawText() : "{}" }));
         await db.SaveChangesAsync(ct);
     }
-    public async Task<Analysis> Analyse(Event item, CancellationToken ct)
+    public async Task<Analysis> Analyse(Event item, CancellationToken ct, string? selectedModel = null)
     {
         if (Env("OPENAI_API_KEY") == "") throw new InvalidOperationException("模型凭据未配置");
         var timer = Stopwatch.StartNew();
         await Embed(item, ct);
         var related = await db.Events.AsNoTracking().Where(e => e.GroupId == item.GroupId && e.Id != item.Id).Take(20).ToListAsync(ct);
         var evidence = related.Append(item).GroupBy(e => e.EvidenceKey == "" ? e.Fingerprint : e.EvidenceKey).Select(g => new { evidenceKey = g.Key, reports = g.Select(e => new { e.Title, e.Publisher, e.Url, e.Relation, e.PublishedAt }) }).ToArray();
-        var model = Env("OPENAI_MODEL") is { Length: > 0 } m ? m : "zai-org/GLM-5.3-Flash";
+        var model = ModelCatalog.Resolve(selectedModel ?? (await db.Settings.SingleAsync(ct)).AnalysisModel);
+        if(model=="") throw new InvalidOperationException("请先选择分析模型");
         var baseUrl = Env("OPENAI_BASE_URL") is { Length: > 0 } u ? u : "https://api.siliconflow.cn/v1";
         using var req = new HttpRequestMessage(HttpMethod.Post, baseUrl.TrimEnd('/') + "/chat/completions");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Env("OPENAI_API_KEY"));

@@ -156,6 +156,8 @@ public sealed class Audit : Entity
 }
 public sealed class Settings
 {
+    public string AnalysisModel { get; set; } = "";
+    public string AgentModel { get; set; } = "";
     public int Id { get; set; } = 1;
     public bool AutoPaused { get; set; } = true;
     public int AnalysisDailyLimit { get; set; } = 100;

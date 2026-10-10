@@ -45,13 +45,14 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
                 answer=answer with { Summary=answer.Summary+" AI 尚未配置，无法执行分析或生成草稿。" };
             } else if(needsModel && events.Count>0) {
                 // Reserve before marking running: quota deferral remains safely resumable.
-                if(message.Action=="analyse") analysis=await db.Analyses.SingleOrDefaultAsync(a=>a.EventId==events[0].Id,ct);
+                if(message.Model=="") message.Model=ModelCatalog.Resolve((await db.Settings.SingleAsync(ct)).AgentModel);
+                if(message.Action=="analyse") analysis=await db.Analyses.SingleOrDefaultAsync(a=>a.EventId==events[0].Id && a.Model==message.Model,ct);
                 if(analysis==null) await Reserve(message.Action=="analyse",ct);
                 message.Status="running"; message.Progress="正在分析来源与上下文"; message.UpdatedAt=Clock.Now;
                 db.Mark("agent",message.Id,"running"); await db.SaveChangesAsync(ct);
                 if(message.Action=="analyse") {
                     Tool(message,"分析选定事件");
-                    if(analysis==null) analysis=await connectors.Analyse(events[0],ct);
+                    if(analysis==null) analysis=await connectors.Analyse(events[0],ct,message.Model);
                     var result=Json.Read<AnalysisResult>(analysis.Result);
                     answer=new AgentAnswer(result.Summary,result.Facts??[],result.Reports??[],result.Predictions??[],result.Rumors??[],(result.Uncertainties??[]).Append(notice).ToArray(),citations,Clock.Now);
                     message.Model=analysis.Model; message.Usage=analysis.Usage;
@@ -117,7 +118,7 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
         await db.SaveChangesAsync(ct); await tx.CommitAsync(ct);
     }
     private async Task<AgentAnswer> Complete(AgentMessage message,List<Event> events,CancellationToken ct) {
-        var model=Connectors.Env("OPENAI_MODEL"); if(model=="") throw new InvalidOperationException("模型未选择");
+        var model=message.Model; if(model=="") throw new InvalidOperationException("模型未选择");
         var baseUrl=Connectors.Env("OPENAI_BASE_URL"); if(baseUrl=="") baseUrl="https://api.siliconflow.cn/v1";
         using var request=new HttpRequestMessage(HttpMethod.Post,baseUrl.TrimEnd('/')+"/chat/completions");
         request.Headers.Authorization=new AuthenticationHeaderValue("Bearer",Connectors.Env("OPENAI_API_KEY"));
