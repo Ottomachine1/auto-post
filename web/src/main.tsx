@@ -1,3 +1,4 @@
+import {AnalyticsPanel} from './AnalyticsPanel';
 import {ThemeSettings,ThemeListener} from './Theme';
 import {ScoreBadge,ScorePanel,ScoreSettings,type ScoreDetail} from './ValueScore';
 import {ModelPicker} from './ModelPicker';
@@ -313,6 +314,7 @@ function App() {
             ["drafts", FileText, "发布中心"],
             ["rules", Zap, "自动化规则"],
             ["sources", Database, "数据源与渠道"],
+            ["analytics", Activity, "情报统计"],
             ["system", Activity, "系统状态"],
           ].map(([id, Icon, label]) => (
             <button
@@ -353,6 +355,7 @@ function App() {
                   drafts: "发布中心",
                   rules: "自动化规则",
                   sources: "数据源与渠道",
+                  analytics: "情报统计",
                   system: "系统状态",
                 }[page]
               }
@@ -1231,6 +1234,7 @@ function App() {
               </div>
             </>
           )}
+          {page === "analytics" && <AnalyticsPanel connected={connected} sources={status.data?.sources||[]}/>}
           {page === "system" && (
             <>
               <div className="panel content-card">

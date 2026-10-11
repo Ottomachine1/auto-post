@@ -43,6 +43,8 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
             b.Entity<Event>().HasIndex("SourceIdentity").IsUnique();
         }
         b.Entity<Event>().HasIndex(x => new { x.Demo, x.PublishedAt, x.Id });
+        b.Entity<Event>().HasIndex(x => new {x.Demo,x.CollectedAt});
+        b.Entity<ValueScore>().HasIndex(x=>new {x.Demo,x.EventId,x.CreatedAt,x.Id});
         b.Entity<Event>().HasIndex(x => x.Fingerprint);
         b.Entity<Event>().HasIndex(x => x.GroupId);
         b.Entity<Translation>().HasIndex(x => new { x.ContentHash, x.TargetLanguage, x.Demo }).IsUnique();
@@ -90,6 +92,7 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
         await ManualTranslationMigration.ApplyMySql(this, ct);
         await DraftLifecycleMigration.ApplyMySql(this, ct);
         await ValueScoringMigration.ApplyMySql(this, ct);
+        await AnalyticsIndexesMigration.ApplyMySql(this, ct);
         if (!await Settings.AnyAsync(ct)) { Settings.Add(new Settings()); await SaveChangesAsync(ct); }
     }
     public async Task<Job> Enqueue(string kind, string target, CancellationToken ct = default)
