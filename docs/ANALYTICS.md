@@ -13,3 +13,7 @@ Initial local validation: PostgreSQL3 and pinned cloud MySQL3 targeted tests pas
 Remaining analytics scope: cross-source event-group first-seen history, validated sentiment classifier/asset scope, actual value trend visualization, filtering/quarantine feedback and larger workload measurements. The current report is a first implementation, not completion of all V2 analytics requirements.
 
 Average-score trends currently use latest persisted score snapshots grouped by event collection time, not historical as-of score reconstruction. Dedicated value trend visualization and score freshness/coverage explanations require further work.
+
+Full CI12ff9b4: PostgreSQL and MySQL regressions passed; browser suite12 passed,2 last mobile logins timed out. The suite now has more login operations than the10/minute per-IP production limiter. Desktop/mobile suites now run with separate backend lifetimes; production limit is unchanged. Full rerun required before deployment.
+
+Local full browser rerun with CI server lifetimes: desktop7 + mobile7 passed (32.3s/32.1s). Migration012 applied twice to the restored isolated cloud database; verify-db still matched all18 tables (9100events,57scores). Production remains v0.6.6 pending final CI gate.
