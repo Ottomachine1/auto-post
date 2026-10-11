@@ -1,0 +1,21 @@
+import {test,expect} from '@playwright/test';
+test('theme preference persists and system changes update the workspace',async({page})=>{
+ await page.emulateMedia({colorScheme:'dark'});
+ await page.goto('/');
+ await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+ await page.getByRole('button',{name:'系统状态',exact:false}).click();
+ const select=page.getByLabel('页面主题',{exact:true});
+ await select.selectOption('light');
+ await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+ const colors=await page.locator('html').evaluate(e=>({text:getComputedStyle(e).color,background:getComputedStyle(e).backgroundColor}));
+ const luminance=(value:string)=>{const rgb=value.match(/\d+/g)!.slice(0,3).map(Number).map(n=>{const v=n/255;return v<=.04045?v/12.92:((v+.055)/1.055)**2.4;});return .2126*rgb[0]+.7152*rgb[1]+.0722*rgb[2];};
+ const a=luminance(colors.text),b=luminance(colors.background);expect((Math.max(a,b)+.05)/(Math.min(a,b)+.05)).toBeGreaterThanOrEqual(4.5);
+ await page.reload();await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+ await page.getByRole('button',{name:'系统状态',exact:false}).click();
+ await page.getByLabel('页面主题',{exact:true}).selectOption('system');
+ await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+ await page.emulateMedia({colorScheme:'light'});await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+ await page.getByLabel('页面主题',{exact:true}).selectOption('dark');
+ await page.emulateMedia({colorScheme:'light'});await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+});

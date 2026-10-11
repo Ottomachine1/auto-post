@@ -1,3 +1,4 @@
+import {ThemeSettings,ThemeListener} from './Theme';
 import {ScoreBadge,ScorePanel,ScoreSettings,type ScoreDetail} from './ValueScore';
 import {ModelPicker} from './ModelPicker';
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -1233,7 +1234,7 @@ function App() {
           {page === "system" && (
             <>
               <div className="panel content-card">
-                <h2>运行状态与预算</h2>
+                <h2>运行状态与预算</h2><ThemeSettings/>
                 <p className="muted">{status.data?.mode==="live"?"真实数据生产模式":"演示模式"} · {status.data?.cloudDatabaseStatus==="connected"?"云数据库已连接":"云数据库待证书核验，当前数据库正常运行"}</p>
                 <p className="muted">
                   Worker 心跳：
@@ -1848,7 +1849,7 @@ function Budget({
   );
 }
 createRoot(document.getElementById("root")!).render(
-  <QueryClientProvider client={queryClient}>
+  <QueryClientProvider client={queryClient}><ThemeListener/>
     <App />
   </QueryClientProvider>,
 );
