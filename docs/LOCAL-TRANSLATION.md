@@ -10,7 +10,9 @@
 
 接口：`POST /api/events/{id}/translation`（target）、`POST /api/translations`（title/body/target）、`GET /api/translations/{id}`、`GET /api/translation-languages`。目标菜单来自本地健康检查实际已安装目标语言与 `TRANSLATION_TARGETS` 的交集；默认 zh。服务不可达显示未就绪，不借用 SiliconFlow 翻译。
 
-迁移：PostgreSQL 009；MySQL 显式 `migrate` 增量创建表并记录版本9，不清库。备份工具包含第16张业务表 Translations，也支持旧15表备份按空翻译缓存恢复。新增功能目前为开发代码，尚未宣称生产部署。
+迁移：PostgreSQL 009；MySQL 显式 `migrate` 增量创建表并记录版本9，不清库。备份工具包含第16张业务表 Translations，也支持旧15表备份按空翻译缓存恢复。
+
+2026-10-11：手动翻译版本 `092ed27` 的完整 CI `38133023587` 通过 PostgreSQL/MySQL 回归、桌面/移动浏览器用例及三个镜像构建，已部署生产 v0.6.4。真实英文事件 `ff5ca4c389d5450b8a12b4bbe409464d` 手动翻译完成，原文保留，再次请求返回同一已完成缓存。公网验收：mysql/connected、live/ok、安全 Cookie、CSRF、分页、来源 CRUD、Agent 12条来源引用通过，自动发布仍暂停。机器翻译存在缩写及术语偏差，必须核对原文。
 
 ## v0.6.1 历史记录（自动策略已被上述手动策略取代）
 

@@ -148,6 +148,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
     public void Snapshot(Draft draft) => db.Versions.Add(new DraftVersion { DraftId = draft.Id, Revision = draft.Revision, MediaJson = draft.MediaJson, Content = draft.Content, Channels = draft.Channels });
     public async Task QueuePublish(Draft draft, Rule? rule, CancellationToken ct)
     {
+        if (draft.DeletedAt is not null || draft.ArchivedAt is not null) throw new InvalidOperationException("回收站或归档草稿禁止发布");
         if (Registration.Demo || draft.Demo || draft.Quarantined) throw new InvalidOperationException("演示或隔离草稿禁止发布");
         if (draft.ApprovedRevision != draft.Revision) throw new InvalidOperationException("请审核当前版本");
         foreach (var channel in Json.Read<string[]>(draft.Channels))
@@ -168,6 +169,9 @@ public sealed class Pipeline(Store db, Connectors connectors)
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             await db.Lock(ct);
+            await db.Entry(delivery).ReloadAsync(ct);
+            await db.Entry(draft).ReloadAsync(ct);
+            if (delivery.Status != "queued") { await tx.CommitAsync(ct); return; }
             var rejection = await PublishRejection(delivery, draft, ct);
             if (rejection != null)
             {
@@ -200,6 +204,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
     }
     public async Task<string?> PublishRejection(Delivery delivery, Draft draft, CancellationToken ct)
     {
+        if (draft.DeletedAt is not null || draft.ArchivedAt is not null) return "草稿已删除或归档";
         if (Registration.Demo || draft.Demo || draft.Quarantined) return "演示或隔离内容禁止发布";
         if (draft.Revision != delivery.Revision || draft.ApprovedRevision != draft.Revision) return "草稿版本未审核";
         if (Connectors.ContentError(delivery.Channel, draft.Content, Json.Read<Attachment[]>(draft.MediaJson).Length>0) is { } error) return error;

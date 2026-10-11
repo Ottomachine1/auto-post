@@ -43,6 +43,7 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
         b.Entity<Event>().HasIndex(x => new { x.TranslationStatus, x.CollectedAt });
         b.Entity<Analysis>().HasIndex(x => x.EventId).IsUnique();
         b.Entity<DraftVersion>().HasIndex(x => new { x.DraftId, x.Revision }).IsUnique();
+        b.Entity<Draft>().HasIndex(x=>new {x.Demo,x.DeletedAt,x.UpdatedAt});
         b.Entity<Draft>().HasIndex(x => new { x.EventId, x.RuleId }).IsUnique().HasFilter(MySql ? null : "\"RuleId\" IS NOT NULL");
         b.Entity<Delivery>().HasIndex(x => new { x.DraftId, x.Revision, x.Channel }).IsUnique();
         b.Entity<Delivery>().HasIndex(x => new { x.Channel, x.CreatedAt });
@@ -81,6 +82,7 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
         // MySQL schema is created only by the explicit deployment command.
         await Database.EnsureCreatedAsync(ct);
         await ManualTranslationMigration.ApplyMySql(this, ct);
+        await DraftLifecycleMigration.ApplyMySql(this, ct);
         if (!await Settings.AnyAsync(ct)) { Settings.Add(new Settings()); await SaveChangesAsync(ct); }
     }
     public async Task<Job> Enqueue(string kind, string target, CancellationToken ct = default)

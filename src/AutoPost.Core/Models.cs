@@ -65,6 +65,8 @@ public sealed class Translation : Entity
 }
 public sealed class Draft : Entity
 {
+    public long? DeletedAt { get; set; }
+    public long? ArchivedAt { get; set; }
     public string MediaJson { get; set; } = "[]";
     public string Content { get; set; } = "";
     public string Channels { get; set; } = "[]";

@@ -19,8 +19,7 @@ internal static class DatabaseTransfer
             await tx.CommitAsync();
             await File.WriteAllTextAsync(file,Json.Write(document));
         } else if(command=="import-db") {
-            document=Json.Read<Dictionary<string,JsonElement>>(await File.ReadAllTextAsync(file));
-            if (!document.ContainsKey(nameof(Translation))) document[nameof(Translation)] = JsonSerializer.SerializeToElement(Array.Empty<Translation>(), Json.Options);
+            document=await Load(file);
             await using var tx=await db.Database.BeginTransactionAsync(); await db.Lock();
             foreach(var type in Tables) {
                 var entities=(System.Collections.IEnumerable)JsonSerializer.Deserialize(document[type.Name],typeof(List<>).MakeGenericType(type),Json.Options)!;
@@ -38,8 +37,7 @@ internal static class DatabaseTransfer
             }
             await tx.CommitAsync();
         } else {
-            document=Json.Read<Dictionary<string,JsonElement>>(await File.ReadAllTextAsync(file));
-            if (!document.ContainsKey(nameof(Translation))) document[nameof(Translation)] = JsonSerializer.SerializeToElement(Array.Empty<Translation>(), Json.Options);
+            document=await Load(file);
         }
         var report=new Dictionary<string,object>();
         foreach(var type in Tables) {
@@ -50,6 +48,13 @@ internal static class DatabaseTransfer
         Console.WriteLine(Json.Write(report));
     }
     private static string Canonical(JsonElement value) => string.Join("\n",value.EnumerateArray().OrderBy(e=>e.GetProperty("id").ToString(),StringComparer.Ordinal).Select(e=>e.GetRawText()));
+    private static async Task<Dictionary<string,JsonElement>> Load(string file)
+    {
+        var document=Json.Read<Dictionary<string,JsonElement>>(await File.ReadAllTextAsync(file));
+        if(!document.ContainsKey(nameof(Translation)))document[nameof(Translation)]=JsonSerializer.SerializeToElement(Array.Empty<Translation>(),Json.Options);
+        foreach(var type in Tables){var list=typeof(List<>).MakeGenericType(type);document[type.Name]=JsonSerializer.SerializeToElement(JsonSerializer.Deserialize(document[type.Name],list,Json.Options),list,Json.Options);}
+        return document;
+    }
     private static Task<JsonElement> Read(Store db,Type type) => (Task<JsonElement>)typeof(DatabaseTransfer).GetMethod(nameof(ReadTyped),BindingFlags.NonPublic|BindingFlags.Static)!.MakeGenericMethod(type).Invoke(null,[db])!;
     private static async Task<JsonElement> ReadTyped<T>(Store db) where T:class => JsonSerializer.SerializeToElement(await db.Set<T>().AsNoTracking().ToListAsync(),Json.Options);
 }

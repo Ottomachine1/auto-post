@@ -89,6 +89,7 @@ api.AddEndpointFilter(async (ctx, next) =>
 });
 api.MapGet("/session", (HttpContext ctx, IAntiforgery csrf) => new { csrfToken = csrf.GetAndStoreTokens(ctx).RequestToken });
 api.MapAgent();
+api.MapDraftManagement();
 api.MapDelete("/session", async (HttpContext ctx) => { await ctx.SignOutAsync("session"); return Results.Ok(); });
 api.MapGet("/events", async (Store db, string? source, string? q, int? limit) =>
     (await Query(db, source, q, null).Take(Math.Clamp(limit ?? 50, 1, 200)).ToListAsync()).Select(EventDto));
@@ -179,7 +180,7 @@ api.MapGet("/media/{id}", async (string id, Store db) => {
 });
 api.MapGet("/drafts", async (Store db) =>
 {
-    var drafts = await db.Drafts.Where(d => d.Demo == Registration.Demo || d.Quarantined).OrderByDescending(d => d.CreatedAt).Take(100).ToListAsync();
+    var drafts = await db.Drafts.Where(d => (d.Demo == Registration.Demo || d.Quarantined) && d.DeletedAt == null && d.ArchivedAt == null).OrderByDescending(d => d.CreatedAt).Take(100).ToListAsync();
     var ids = drafts.Select(d => d.Id).ToArray(); var deliveries = await db.Deliveries.Where(d => ids.Contains(d.DraftId)).ToListAsync();
     return drafts.Select(d => new { d.Id, d.Content, media = Json.Read<Attachment[]>(d.MediaJson), channels = Json.Read<string[]>(d.Channels), event_id = d.EventId, d.Status, d.Revision, d.ApprovedRevision, d.Demo, d.Quarantined, d.RuleId, d.RuleVersion, created_at = d.CreatedAt, deliveries = deliveries.Where(x => x.DraftId == d.Id) });
 });
@@ -268,7 +269,7 @@ await app.RunAsync();
 
 static IOrderedQueryable<Event> Query(Store db, string? source, string? q, string? category) => db.Events.AsNoTracking().Where(e => e.Demo == Registration.Demo && (source == null || source == "" || e.Source == source) && (category == null || category == "" || e.Category == category) && (q == null || q == "" || e.Title.ToLower().Contains(q.ToLower()) || e.Body.ToLower().Contains(q.ToLower()) || e.ChineseTitle.Contains(q) || e.ChineseBody.Contains(q))).OrderByDescending(e => e.PublishedAt).ThenByDescending(e => e.Id);
 static object EventDto(Event e) => new { e.Id, e.Source, source_id = e.SourceId, e.Title, e.Body, e.Url, e.Category, published_at = e.PublishedAt, collected_at = e.CollectedAt, e.Demo, e.GroupId, e.AnalysisStatus, e.Author, e.Language, e.OriginalSummary, e.Publisher, e.EvidenceKey, e.Relation, e.PublishedEstimated, e.ChineseTitle, e.ChineseBody, e.TranslationStatus, e.TranslationEngine };
-static async Task<Draft> GetDraft(Store db, string id) => await db.Drafts.SingleOrDefaultAsync(d => d.Id == id && (d.Demo == Registration.Demo || d.Quarantined)) ?? throw new ArgumentException("草稿不存在");
+static async Task<Draft> GetDraft(Store db, string id) => await db.Drafts.SingleOrDefaultAsync(d => d.Id == id && d.DeletedAt == null && d.ArchivedAt == null && (d.Demo == Registration.Demo || d.Quarantined)) ?? throw new ArgumentException("草稿不存在或已归档删除");
 static void ValidateDraft(DraftInput input)
 {
     if (input.Content == null || string.IsNullOrWhiteSpace(input.Content) && !(input.Media?.Length>0) || input.Content.Length > 10000 || input.Channels.Length is < 1 or > 5 || input.Channels.Any(c => !Connectors.Channels.Contains(c))) throw new ArgumentException("请填写有效内容并选择渠道");
