@@ -1,3 +1,4 @@
+import {EventFilterControls,type EventFilterValues} from './EventFilterControls';
 import {AnalyticsPanel} from './AnalyticsPanel';
 import {ThemeSettings,ThemeListener} from './Theme';
 import {ScoreBadge,ScorePanel,ScoreSettings,type ScoreDetail} from './ValueScore';
@@ -191,9 +192,11 @@ function App() {
     enabled: connected,
     refetchInterval: 15000,
   });
+  const [eventFilters,setEventFilters]=useState<EventFilterValues>({});
+  const snapshotScores=!!(eventFilters.scoreState||eventFilters.minScore||eventFilters.maxScore);
   const sources: Source[] = status.data?.sources || [];
   const feed = useInfiniteQuery({
-    queryKey: ["events", source, search, category],
+    queryKey: ["events", source, search, category,eventFilters],
     queryFn: ({ pageParam }) =>
       api<{ items: EventItem[]; nextCursor: string | null }>(
         "/events/page?" +
@@ -201,6 +204,7 @@ function App() {
             source,
             q: search,
             category,
+            ...eventFilters,
             ...(pageParam ? { cursor: pageParam } : {}),
           }),
       ),
@@ -252,7 +256,7 @@ function App() {
     overscan: 5,
   });
   const scoreIds=Array.from(new Set([...virtual.getVirtualItems().map(v=>rows[v.index]?.id).filter((id):id is string=>!!id),...(selected?[selected.id]:[])])).sort();
-  const scores=useQuery({queryKey:['scores',scoreIds.join('|')],queryFn:()=>api<Record<string,ScoreDetail>>('/events/scores','POST',{ids:scoreIds}),enabled:connected&&scoreIds.length>0,staleTime:300000,retry:1});
+  const scores=useQuery({queryKey:['scores',snapshotScores?'snapshots':'calculate',snapshotScores?JSON.stringify(eventFilters):'',scoreIds.join('|')],queryFn:()=>snapshotScores?api<Record<string,ScoreDetail>>('/scoring/snapshots?ids='+encodeURIComponent(scoreIds.join(','))):api<Record<string,ScoreDetail>>('/events/scores','POST',{ids:scoreIds}),enabled:connected&&scoreIds.length>0,staleTime:300000,retry:1});
   async function action(work: () => Promise<unknown>) {
     setBusy(true);
     setError("");
@@ -534,6 +538,7 @@ function App() {
                       ))}
                     </select>
                   </div>
+                  <EventFilterControls connected={connected} onApply={setEventFilters}/>
                   <label className="search">
                     <Search size={16} />
                     <input
@@ -626,7 +631,7 @@ function App() {
                                   <p>{e.body}</p>
                                   <div className="event-footer">
                                     <span>原文 · 按需翻译</span>
-                                    {connected&&<ScoreBadge detail={scores.data?.[e.id]} failed={scores.isError}/>}
+                                    {connected&&<ScoreBadge detail={scores.data?.[e.id]} failed={scores.isError} unscored={snapshotScores&&!scores.isPending&&!scores.data?.[e.id]}/>}
                                     <span>
                                       {statusName[e.analysisStatus] || "待分析"}
                                     </span>

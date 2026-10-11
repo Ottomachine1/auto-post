@@ -8,6 +8,12 @@ public static class ValueScoringEndpoints
     public sealed record FeedbackInput(string EventId,int Rating,int? SourceRating,string? Note);
     public static void MapValueScoring(this RouteGroupBuilder api)
     {
+        api.MapGet("/scoring/snapshots",async(string ids,Store db,CancellationToken ct)=>{
+            var keys=ids.Split(',');if(keys.Length is <1 or >200||keys.Any(string.IsNullOrWhiteSpace)||keys.Distinct().Count()!=keys.Length)throw new ArgumentException("请选择1至200条不重复情报");
+            if(await db.Events.CountAsync(e=>keys.Contains(e.Id)&&e.Demo==Registration.Demo,ct)!=keys.Length)throw new ArgumentException("情报不存在或模式不符");
+            var snapshots=await EventFilters.LatestScores(db).Where(s=>keys.Contains(s.EventId)).ToListAsync(ct);
+            return Results.Ok(snapshots.ToDictionary(s=>s.EventId,s=>Json.Read<ValueScoring.Detail>(s.DetailJson)));
+        });
         api.MapPost("/events/scores",async(BatchInput input,Store db,CancellationToken ct)=>Results.Ok(await ValueScoring.Batch(db,input.Ids,ct)));
         api.MapGet("/scoring/profile",async(Store db,CancellationToken ct)=>{
             var settings=await db.Settings.SingleAsync(ct);

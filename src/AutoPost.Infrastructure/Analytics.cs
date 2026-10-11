@@ -27,7 +27,7 @@ public static class Analytics
         var topics=await events.GroupBy(e=>e.Category).OrderByDescending(g=>g.Count()).ThenBy(g=>g.Key).Select(g=>new Count(g.Key,g.Count())).ToArrayAsync(ct);
         var processing=await events.GroupBy(e=>e.AnalysisStatus).Select(g=>new Count(g.Key,g.Count())).ToArrayAsync(ct);
         // One latest snapshot per event, with deterministic tie break for timestamps sharing a second.
-        var latest=db.ValueScores.AsNoTracking().Where(s=>s.Demo==Registration.Demo&&!db.ValueScores.Any(other=>other.Demo==s.Demo&&other.EventId==s.EventId&&(other.CreatedAt>s.CreatedAt||(other.CreatedAt==s.CreatedAt&&string.Compare(other.Id,s.Id)>0))));
+        var latest=EventFilters.LatestScores(db);
         var scored=from e in events join s in latest on e.Id equals s.EventId select new {e.CollectedAt,s.Score};
         var scoredCount=await scored.CountAsync(ct);var average=await scored.Select(s=>(double?)s.Score).AverageAsync(ct);
         var reportBuckets=await events.GroupBy(e=>Math.Floor((double)(e.CollectedAt-window.From)/window.BucketSeconds)).Select(g=>new {Index=g.Key,Count=g.Count()}).ToListAsync(ct);

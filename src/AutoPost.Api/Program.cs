@@ -95,9 +95,9 @@ api.MapAnalytics();
 api.MapDelete("/session", async (HttpContext ctx) => { await ctx.SignOutAsync("session"); return Results.Ok(); });
 api.MapGet("/events", async (Store db, string? source, string? q, int? limit) =>
     (await Query(db, source, q, null).Take(Math.Clamp(limit ?? 50, 1, 200)).ToListAsync()).Select(EventDto));
-api.MapGet("/events/page", async (Store db, string? source, string? q, string? category, string? cursor) =>
+api.MapGet("/events/page", async (Store db, string? source, string? q, string? category, string? cursor, string? language, long? from, long? to, int? minScore, int? maxScore, string? scoreState) =>
 {
-    IQueryable<Event> query = Query(db, source, q, category);
+    IQueryable<Event> query = EventFilters.Apply(db,Query(db, source, q, category),language,from,to,minScore,maxScore,scoreState).OrderByDescending(e=>e.PublishedAt).ThenByDescending(e=>e.Id);
     if (cursor != null)
     {
         var split = cursor.Split(':', 2);

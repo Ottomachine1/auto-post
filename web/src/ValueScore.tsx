@@ -3,7 +3,7 @@ import {useQuery,useQueryClient} from '@tanstack/react-query';
 import {api} from './api';
 export type ScoreDetail={score:number;components:Record<string,{value:number;reason:string}>;weights:Record<string,number>;weightVersion:number;algorithm:string;model:string|null;promptVersion:string|null;verification:string;feedbackAdjustment:number;traffic:number|null;asOf:number};
 const names:Record<string,string>={source:'来源可信度',freshness:'时效性',impact:'潜在影响',novelty:'新颖程度',evidence:'证据完整度'};
-export function ScoreBadge({detail,failed=false}:{detail?:ScoreDetail;failed?:boolean}){return <span className="value-score" title={detail?'重要性估分，不代表事实核验；可在事件详情查看依据':'正在计算重要性'}>重要性 {detail?detail.score+'/100':failed?'暂不可用':'计算中'}</span>;}
+export function ScoreBadge({detail,failed=false,unscored=false}:{detail?:ScoreDetail;failed?:boolean;unscored?:boolean}){return <span className="value-score" title={detail?'重要性估分，不代表事实核验；可在事件详情查看依据':unscored?'尚无已保存的评分快照':'正在计算重要性'}>重要性 {detail?detail.score+'/100':failed?'暂不可用':unscored?'尚未评分':'计算中'}</span>;}
 export function ScorePanel({id,detail}:{id:string;detail?:ScoreDetail}){
  const cache=useQueryClient();const [rating,setRating]=useState(50),[sourceRating,setSourceRating]=useState(50),[rateSource,setRateSource]=useState(false),[note,setNote]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const existing=useQuery({queryKey:['score-feedback',id],queryFn:()=>api('/scoring/feedback/'+id)});
