@@ -14,6 +14,8 @@
 
 2026-10-11：手动翻译版本 `092ed27` 的完整 CI `38133023587` 通过 PostgreSQL/MySQL 回归、桌面/移动浏览器用例及三个镜像构建，已部署生产 v0.6.4。真实英文事件 `ff5ca4c389d5450b8a12b4bbe409464d` 手动翻译完成，原文保留，再次请求返回同一已完成缓存。公网验收：mysql/connected、live/ok、安全 Cookie、CSRF、分页、来源 CRUD、Agent 12条来源引用通过，自动发布仍暂停。机器翻译存在缩写及术语偏差，必须核对原文。
 
+CI 实际数量：PostgreSQL 77项、MySQL 77项，浏览器6项通过。部署前备份 `autopost-20261011T105035Z.json`，部署后含翻译缓存的16表备份 `autopost-20261011T105301Z.json`；后者恢复到独立 `autopost_manual_restore_20261011`，16表数量与字段哈希全部匹配（`V064_ALL_16_TABLES_RESTORED`）。文件名为 UTC 时间。
+
 ## v0.6.1 历史记录（自动策略已被上述手动策略取代）
 
 翻译独立于 SiliconFlow 分析和 Agent，不发送翻译请求到付费大模型。
