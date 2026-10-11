@@ -3,3 +3,5 @@
 .agent-footer{display:block}.agent-footer form{display:block}.agent-footer textarea{max-height:150px}.agent-quick button{white-space:nowrap}
 
 .model-picker{display:flex;flex-direction:column;gap:6px;font-size:12px;min-width:0}.model-picker select{max-width:100%;width:100%;background:#122520;color:#d9e8df;border:1px solid #345044;border-radius:8px;padding:8px}.agent-footer .model-picker{margin-bottom:10px}
+
+@media(max-width:640px){.agent-fab{bottom:calc(78px + env(safe-area-inset-bottom,0px))}}

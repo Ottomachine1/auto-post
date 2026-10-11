@@ -90,6 +90,7 @@ api.AddEndpointFilter(async (ctx, next) =>
 api.MapGet("/session", (HttpContext ctx, IAntiforgery csrf) => new { csrfToken = csrf.GetAndStoreTokens(ctx).RequestToken });
 api.MapAgent();
 api.MapDraftManagement();
+api.MapValueScoring();
 api.MapDelete("/session", async (HttpContext ctx) => { await ctx.SignOutAsync("session"); return Results.Ok(); });
 api.MapGet("/events", async (Store db, string? source, string? q, int? limit) =>
     (await Query(db, source, q, null).Take(Math.Clamp(limit ?? 50, 1, 200)).ToListAsync()).Select(EventDto));

@@ -13,6 +13,8 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
     public DbSet<AgentMessage> AgentMessages => Set<AgentMessage>();
     public DbSet<MediaAsset> Media => Set<MediaAsset>();
     public DbSet<Event> Events => Set<Event>();
+    public DbSet<ValueScore> ValueScores => Set<ValueScore>();
+    public DbSet<ValueFeedback> ValueFeedback => Set<ValueFeedback>();
     public DbSet<Translation> Translations => Set<Translation>();
     public DbSet<Analysis> Analyses => Set<Analysis>();
     public DbSet<Draft> Drafts => Set<Draft>();
@@ -28,6 +30,10 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<ValueScore>().Property(x=>x.InputHash).HasMaxLength(64);
+        b.Entity<ValueScore>().HasIndex(x=>new {x.EventId,x.InputHash,x.Demo}).IsUnique();
+        b.Entity<ValueFeedback>().HasIndex(x=>new {x.EventId,x.Demo}).IsUnique();
+        b.Entity<ValueFeedback>().HasIndex(x=>new {x.SourceId,x.Demo});
         b.Entity<AgentSession>().HasIndex(x => new { x.Demo, x.UpdatedAt });
         b.Entity<AgentMessage>().HasIndex(x => new { x.SessionId, x.CreatedAt });
         b.Entity<AgentMessage>().HasIndex(x => new { x.SessionId, x.RequestId }).IsUnique();
@@ -83,6 +89,7 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
         await Database.EnsureCreatedAsync(ct);
         await ManualTranslationMigration.ApplyMySql(this, ct);
         await DraftLifecycleMigration.ApplyMySql(this, ct);
+        await ValueScoringMigration.ApplyMySql(this, ct);
         if (!await Settings.AnyAsync(ct)) { Settings.Add(new Settings()); await SaveChangesAsync(ct); }
     }
     public async Task<Job> Enqueue(string kind, string target, CancellationToken ct = default)

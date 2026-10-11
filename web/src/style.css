@@ -1251,3 +1251,12 @@ footer {
 .draft-selection{flex-wrap:wrap;gap:8px;margin:0 0 8px;padding:8px 12px;border-bottom:1px solid var(--border,#344743)}
 .draft-pagination{display:flex;justify-content:center;align-items:center;gap:12px;margin:20px 0}
 @media(max-width:600px){.draft-manager-controls select{max-width:100%;flex:1}.draft-pagination{font-size:12px}}
+
+.value-score{color:var(--accent,#d4ff5c);font-variant-numeric:tabular-nums;white-space:nowrap}
+.score-panel{padding:14px 0;border-block:1px solid var(--border,#344743);margin:16px 0;font-size:12px}
+.score-panel dl>div{display:grid;grid-template-columns:100px 1fr;gap:12px;border-bottom:1px solid var(--border,#344743);padding:10px 0}
+.score-panel dd{margin:0}.score-panel dd p{margin:5px 0;color:var(--muted,#9caea8)}
+.score-panel small{display:block;margin:12px 0;overflow-wrap:anywhere}.score-panel summary{cursor:pointer;padding:10px 0}
+.score-panel label,.score-settings label{display:flex;gap:10px;align-items:center;justify-content:space-between;margin:10px 0}
+.score-panel input[type=number],.score-settings input{width:80px}.score-panel input[type=checkbox]{width:16px}
+.score-panel textarea{width:100%;min-height:80px}.score-settings{margin-top:18px}

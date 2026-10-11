@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 // Explicit offline transfer. Stop both writers first. Existing rows are never overwritten.
 internal static class DatabaseTransfer
 {
-    private static readonly Type[] Tables = [typeof(Event),typeof(Analysis),typeof(Draft),typeof(DraftVersion),typeof(Delivery),typeof(Rule),typeof(Source),typeof(Job),typeof(Change),typeof(Audit),typeof(Settings),typeof(Budget),typeof(MediaAsset),typeof(AgentSession),typeof(AgentMessage),typeof(Translation)];
+    private static readonly Type[] Tables = [typeof(Event),typeof(Analysis),typeof(Draft),typeof(DraftVersion),typeof(Delivery),typeof(Rule),typeof(Source),typeof(Job),typeof(Change),typeof(Audit),typeof(Settings),typeof(Budget),typeof(MediaAsset),typeof(AgentSession),typeof(AgentMessage),typeof(Translation),typeof(ValueScore),typeof(ValueFeedback)];
     public static async Task Run(Store db,string command,string file)
     {
         var document = new Dictionary<string,JsonElement>();
@@ -52,6 +52,8 @@ internal static class DatabaseTransfer
     {
         var document=Json.Read<Dictionary<string,JsonElement>>(await File.ReadAllTextAsync(file));
         if(!document.ContainsKey(nameof(Translation)))document[nameof(Translation)]=JsonSerializer.SerializeToElement(Array.Empty<Translation>(),Json.Options);
+        foreach(var type in new[]{typeof(ValueScore),typeof(ValueFeedback)})
+            if(!document.ContainsKey(type.Name))document[type.Name]=JsonSerializer.SerializeToElement(Array.Empty<object>(),Json.Options);
         foreach(var type in Tables){var list=typeof(List<>).MakeGenericType(type);document[type.Name]=JsonSerializer.SerializeToElement(JsonSerializer.Deserialize(document[type.Name],list,Json.Options),list,Json.Options);}
         return document;
     }

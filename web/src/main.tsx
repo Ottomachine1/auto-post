@@ -1,3 +1,4 @@
+import {ScoreBadge,ScorePanel,ScoreSettings,type ScoreDetail} from './ValueScore';
 import {ModelPicker} from './ModelPicker';
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -248,6 +249,8 @@ function App() {
     estimateSize: () => 156,
     overscan: 5,
   });
+  const scoreIds=Array.from(new Set([...virtual.getVirtualItems().map(v=>rows[v.index]?.id).filter((id):id is string=>!!id),...(selected?[selected.id]:[])])).sort();
+  const scores=useQuery({queryKey:['scores',scoreIds.join('|')],queryFn:()=>api<Record<string,ScoreDetail>>('/events/scores','POST',{ids:scoreIds}),enabled:connected&&scoreIds.length>0,staleTime:300000,retry:1});
   async function action(work: () => Promise<unknown>) {
     setBusy(true);
     setError("");
@@ -619,6 +622,7 @@ function App() {
                                   <p>{e.body}</p>
                                   <div className="event-footer">
                                     <span>原文 · 按需翻译</span>
+                                    {connected&&<ScoreBadge detail={scores.data?.[e.id]} failed={scores.isError}/>}
                                     <span>
                                       {statusName[e.analysisStatus] || "待分析"}
                                     </span>
@@ -733,6 +737,7 @@ function App() {
                               查看原始来源 <ArrowUpRight size={14} />
                             </a>
                           )}
+                          {connected&&<ScorePanel key={selected.id} id={selected.id} detail={scores.data?.[selected.id]}/>}
                           <h4>关联来源 · 独立性待人工核验</h4>
                           <p className="meta">
                             相似报道与转载归组仅用于去重，不作为已核实证据。
@@ -756,7 +761,7 @@ function App() {
                           {analysis ? (
                             <>
                               <h4>
-                                核心摘要 · 重要性 {analysis.importance ?? "—"}
+                                核心摘要 · 模型原始重要性 {analysis.importance ?? "—"}
                                 /100
                               </h4>
                               <p className="meta">
@@ -1242,6 +1247,7 @@ function App() {
                     : "待连接或已离线"}
                 </p>
                 {connected && <Budget status={status.data} action={action} />}
+                {connected && <ScoreSettings/>}
                 {connected && <section aria-label="本地翻译状态"><h3>手动本地翻译</h3><p className="muted">{status.data?.translation?.configured ? "仅点击后翻译 · 本地 CPU · 无付费模型请求" : "本地翻译服务待配置"}</p><div className="chips">{status.data?.translation?.manualCounts?.map((entry: {status:string;count:number}) => <span key={entry.status}>{({native:"中文原文",completed:"已翻译",pending:"待翻译",failed:"翻译失败"} as Record<string,string>)[entry.status] || entry.status}：{entry.count}</span>)}</div></section>}
                 <div className="chips">
                   {status.data?.usage.map((b: any) => (

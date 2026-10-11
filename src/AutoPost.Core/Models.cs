@@ -63,6 +63,25 @@ public sealed class Translation : Entity
     public long CreatedAt { get; set; } = Clock.Now;
     public long UpdatedAt { get; set; } = Clock.Now;
 }
+public sealed class ValueScore : Entity
+{
+    public string EventId { get; set; } = "";
+    public bool Demo { get; set; }
+    public string InputHash { get; set; } = "";
+    public int Score { get; set; }
+    public string DetailJson { get; set; } = "{}";
+    public long CreatedAt { get; set; } = Clock.Now;
+}
+public sealed class ValueFeedback : Entity
+{
+    public string EventId { get; set; } = "";
+    public string SourceId { get; set; } = "";
+    public bool Demo { get; set; }
+    public int Rating { get; set; }
+    public int? SourceRating { get; set; }
+    public string Note { get; set; } = "";
+    public long UpdatedAt { get; set; } = Clock.Now;
+}
 public sealed class Draft : Entity
 {
     public long? DeletedAt { get; set; }
@@ -178,6 +197,8 @@ public sealed class Audit : Entity
 }
 public sealed class Settings
 {
+    public string ScoreWeightsJson { get; set; } = "{\"source\":25,\"freshness\":20,\"impact\":25,\"novelty\":20,\"evidence\":10}";
+    public int ScoreWeightsVersion { get; set; } = 1;
     public string AnalysisModel { get; set; } = "";
     public string AgentModel { get; set; } = "";
     public int Id { get; set; } = 1;
