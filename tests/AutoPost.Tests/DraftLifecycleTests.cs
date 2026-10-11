@@ -17,6 +17,10 @@ public sealed partial class WorkflowTests
         var response=await client.PostAsJsonAsync("/api/drafts",new {content="Management fixture",channels=new[]{"x"}});response.EnsureSuccessStatusCode();
         var created=await response.Content.ReadFromJsonAsync<IdResult>();
         (await client.PostAsJsonAsync("/api/drafts/bulk",new {action="trash",items=new[]{new {id=created!.Id,revision=1}}})).EnsureSuccessStatusCode();
+        using var selection=JsonDocument.Parse(await client.GetStringAsync("/api/drafts/selection?view=trash&q=Management&channel=x"));
+        Assert.Equal(created!.Id,selection.RootElement.GetProperty("items")[0].GetProperty("id").GetString());
+        using var emptySelection=JsonDocument.Parse(await client.GetStringAsync("/api/drafts/selection?view=active&q=Management"));
+        Assert.Equal(0,emptySelection.RootElement.GetProperty("items").GetArrayLength());
         using var trash=JsonDocument.Parse(await client.GetStringAsync("/api/drafts/page?view=trash&q=Management&channel=x"));Assert.Equal(1,trash.RootElement.GetProperty("total").GetInt32());
         using var active=JsonDocument.Parse(await client.GetStringAsync("/api/drafts/page"));Assert.Equal(0,active.RootElement.GetProperty("total").GetInt32());
         (await client.PostAsJsonAsync("/api/drafts/bulk",new {action="restore",items=new[]{new {id=created!.Id,revision=1}}})).EnsureSuccessStatusCode();

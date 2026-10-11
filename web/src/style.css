@@ -1242,3 +1242,12 @@ footer {
 .manual-translation button{font-size:12px;padding:6px 9px}
 .manual-translation small{display:block;color:var(--muted,#9caea8);margin:6px 0}
 .translation-output p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.8}
+
+.draft-manager-controls{display:flex;flex-direction:column;gap:14px;margin-bottom:18px}
+.draft-manager-controls .actions{flex-wrap:wrap;gap:10px}
+.draft-manager-controls input:not([type=checkbox]){min-width:140px;flex:1}
+.draft-manager-controls label,.draft-selection label{display:inline-flex;align-items:center;gap:7px}
+.draft-manager-controls input[type=checkbox],.draft-selection input[type=checkbox]{width:16px;height:16px;flex:none}
+.draft-selection{flex-wrap:wrap;gap:8px;margin:0 0 8px;padding:8px 12px;border-bottom:1px solid var(--border,#344743)}
+.draft-pagination{display:flex;justify-content:center;align-items:center;gap:12px;margin:20px 0}
+@media(max-width:600px){.draft-manager-controls select{max-width:100%;flex:1}.draft-pagination{font-size:12px}}

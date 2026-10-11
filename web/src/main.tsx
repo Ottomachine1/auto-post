@@ -46,6 +46,7 @@ import "./style.css";
 import {Composer,MediaGrid} from "./Composer";
 import {AgentPanel} from "./AgentPanel";
 import {ManualTranslation} from "./ManualTranslation";
+import {DraftManager} from "./DraftManager";
 import type {Attachment} from "./api";
 
 const queryClient = new QueryClient({
@@ -861,14 +862,7 @@ function App() {
             </>
           )}
           {page === "drafts" && (
-            <div className="cards">
-              {!drafts.data?.length && (
-                <Empty
-                  title="还没有草稿"
-                  note="点击创建内容，或等待真实事件完成模型分析。"
-                />
-              )}
-              {drafts.data?.map((d) => (
+            <DraftManager renderDraft={(d) => (
                 <div className="panel content-card" key={d.id}>
                   <div className="row between">
                     <span className={"pill " + d.status}>
@@ -955,8 +949,7 @@ function App() {
                       )}
                   </div>
                 </div>
-              ))}
-            </div>
+              )} />
           )}
           {page === "rules" && (
             <>
