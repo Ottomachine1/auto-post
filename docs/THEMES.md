@@ -9,3 +9,5 @@ The workspace, composer and Agent share explicit dark/light CSS token tables; im
 The contrast check covers base text only, not a complete accessibility audit. Further visual review of every component and status color remains required.
 
 Full connected CI for4457316 completed successfully (Dotnet workspace38137175628/38137171904); local connected desktop/mobile tests also passed with the analytics increment. Production deployment remains pending.
+
+Deployed in v0.6.7 on2026-10-11 after full CI38138038676 success. Public HTML startup preference script and compiled light-theme selectors verified; live interactive visual audit remains unverified.

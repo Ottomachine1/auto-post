@@ -17,3 +17,7 @@ Average-score trends currently use latest persisted score snapshots grouped by e
 Full CI12ff9b4: PostgreSQL and MySQL regressions passed; browser suite12 passed,2 last mobile logins timed out. The suite now has more login operations than the10/minute per-IP production limiter. Desktop/mobile suites now run with separate backend lifetimes; production limit is unchanged. Full rerun required before deployment.
 
 Local full browser rerun with CI server lifetimes: desktop7 + mobile7 passed (32.3s/32.1s). Migration012 applied twice to the restored isolated cloud database; verify-db still matched all18 tables (9100events,57scores). Production remains v0.6.6 pending final CI gate.
+
+CI38138038676 passed PostgreSQL88, MySQL88, desktop7 and mobile7, all images. v0.6.7 deployed2026-10-11; public fixed-range aggregation matched predeployment snapshot3791 reports/67 sources and all bucket/source/topic totals. Automatic publishing remains paused.
+
+Postdeployment v0.6.7 full backup restored successfully into isolated database: all18 table counts and hashes matched,9332 events.
