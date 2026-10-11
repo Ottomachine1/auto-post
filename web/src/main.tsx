@@ -1,3 +1,4 @@
+import {EventModerationPanel} from './EventModerationPanel';
 import {EventFilterControls,type EventFilterValues} from './EventFilterControls';
 import {AnalyticsPanel} from './AnalyticsPanel';
 import {ThemeSettings,ThemeListener} from './Theme';
@@ -722,6 +723,7 @@ function App() {
                       ) : (
                         <>
                           <span className="eyebrow">SOURCE CONTEXT</span>
+                          {connected&&<EventModerationPanel key={selected.id+'-moderation'} id={selected.id} onChanged={()=>{void qc.invalidateQueries({queryKey:["status"]});}}/>}
                           <ManualTranslation key={selected.id} eventId={selected.id} title={selected.title} body={selected.body} showOriginal />
                           <p className="meta">
                             {selected.publisher ||

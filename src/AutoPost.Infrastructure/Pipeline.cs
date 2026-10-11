@@ -101,11 +101,13 @@ public sealed class Pipeline(Store db, Connectors connectors)
     public async Task Analyse(string id, CancellationToken ct)
     {
         var item = await db.Events.FindAsync([id], ct);
-        if (item == null || item.Demo || Registration.Demo) return;
+        if (item == null || item.Demo || Registration.Demo || item.IsQuarantined) return;
         if (await db.Analyses.AnyAsync(a => a.EventId == id, ct)) { item.AnalysisStatus = "completed"; await db.SaveChangesAsync(ct); return; }
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             await db.Lock(ct);
+            await db.Entry(item).ReloadAsync(ct);
+            if(item.IsQuarantined){await tx.CommitAsync(ct);return;}
             var settings = await db.Settings.SingleAsync(ct);
             var key = "analysis:" + Clock.Day;
             var budget = await db.Budgets.FindAsync([key], ct);
@@ -117,7 +119,9 @@ public sealed class Pipeline(Store db, Connectors connectors)
         await using (var tx = await db.Database.BeginTransactionAsync(ct))
         {
             await db.Lock(ct);
+            await db.Entry(item).ReloadAsync(ct);
             db.Analyses.Add(result); item.AnalysisStatus = "completed";
+            if(item.IsQuarantined){db.Mark("analysis",id,"completed_after_quarantine_no_draft");await db.SaveChangesAsync(ct);await tx.CommitAsync(ct);return;}
             var parsed = Json.Read<AnalysisResult>(result.Result);
             item.Category = parsed.Category ?? item.Category;
             var matched = false;
@@ -150,6 +154,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
     {
         if (draft.DeletedAt is not null || draft.ArchivedAt is not null) throw new InvalidOperationException("回收站或归档草稿禁止发布");
         if (Registration.Demo || draft.Demo || draft.Quarantined) throw new InvalidOperationException("演示或隔离草稿禁止发布");
+        if(draft.EventId!=null&&await db.Events.AnyAsync(e=>e.Id==draft.EventId&&e.IsQuarantined,ct))throw new InvalidOperationException("来源情报已隔离");
         if (draft.ApprovedRevision != draft.Revision) throw new InvalidOperationException("请审核当前版本");
         foreach (var channel in Json.Read<string[]>(draft.Channels))
         {
@@ -206,6 +211,7 @@ public sealed class Pipeline(Store db, Connectors connectors)
     {
         if (draft.DeletedAt is not null || draft.ArchivedAt is not null) return "草稿已删除或归档";
         if (Registration.Demo || draft.Demo || draft.Quarantined) return "演示或隔离内容禁止发布";
+        if(draft.EventId!=null&&await db.Events.AsNoTracking().AnyAsync(e=>e.Id==draft.EventId&&e.IsQuarantined,ct))return "来源情报已隔离";
         if (draft.Revision != delivery.Revision || draft.ApprovedRevision != draft.Revision) return "草稿版本未审核";
         if (Connectors.ContentError(delivery.Channel, draft.Content, Json.Read<Attachment[]>(draft.MediaJson).Length>0) is { } error) return error;
         var attachments = Json.Read<Attachment[]>(draft.MediaJson);

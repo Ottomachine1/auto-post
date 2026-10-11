@@ -38,7 +38,7 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
             }
             var unavailable=await db.Sources.CountAsync(s=>s.Enabled && (s.Error!=null || s.SuspendedUntil>Clock.Now),ct);
             if(unavailable>0) notice+=$" {unavailable} 个来源存在错误或暂缓采集。";
-            if(events.Any(e=>e.TranslationStatus is not ("completed" or "native"))) notice+=" 部分来源正在本地翻译，尚未完成的标题保留原文。";
+            if(events.Any(e=>e.TranslationStatus is not ("completed" or "native"))) notice+=" 部分来源尚未手动翻译，标题保留原文；翻译仅由显式操作触发。";
             var citations=events.Select(e=>new AgentCitation(e.Id,e.ChineseTitle==""?e.Title:e.ChineseTitle,SafeUrl(e.Url),e.Publisher==""?e.Source:e.Publisher,e.PublishedAt,e.CollectedAt)).ToArray();
             var answer=new AgentAnswer(events.Count==0?"当前筛选没有已入库情报。":$"找到 {events.Count} 条最新相关情报。",[],events.Select(e=>e.ChineseTitle==""?e.Title:e.ChineseTitle).ToArray(),[],[],[notice],citations,Clock.Now);
             Analysis? analysis=null;
@@ -67,12 +67,15 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
             ct.ThrowIfCancellationRequested();
             await using(var tx=await db.Database.BeginTransactionAsync(ct)) {
                 await db.Lock(ct);
+                if(await db.Events.AnyAsync(e=>events.Select(item=>item.Id).Contains(e.Id)&&e.IsQuarantined,ct))throw new InvalidOperationException("来源情报已隔离，请重新检索");
                 if(await db.AgentMessages.AsNoTracking().AnyAsync(m=>m.Id==message.Id && m.CancelRequested,ct)) { message.CancelRequested=true; throw new OperationCanceledException(ct); }
                 if(analysis!=null && !await db.Analyses.AnyAsync(a=>a.EventId==analysis.EventId,ct)) {
                     db.Analyses.Add(analysis); var item=await db.Events.FindAsync([analysis.EventId],ct); if(item!=null) item.AnalysisStatus="completed";
                     db.Mark("analysis",analysis.EventId);
                 }
                 if(message.Action=="draft" && !string.IsNullOrWhiteSpace(answer.Draft)) {
+                    var eventIds=events.Select(e=>e.Id).ToArray();
+                    if(await db.Events.AnyAsync(e=>eventIds.Contains(e.Id)&&e.IsQuarantined,ct))throw new InvalidOperationException("来源情报已隔离，不能生成草稿");
                     Tool(message,"创建待审核草稿");
                     var draft=pipeline.NewDraft(answer.Draft,["x"],message.EventId,session.Demo);
                     answer=answer with { DraftId=draft.Id };
@@ -100,7 +103,7 @@ public sealed class AgentService(Store db, Connectors connectors, Pipeline pipel
     }
     private void Tool(AgentMessage message,string label) => db.Mark("agent_tool",message.Id,label);
     private async Task<List<Event>> Retrieve(AgentMessage message,CancellationToken ct) {
-        var query=db.Events.AsNoTracking().Where(e=>e.Demo==Registration.Demo);
+        var query=db.Events.AsNoTracking().Where(e=>e.Demo==Registration.Demo&&!e.IsQuarantined);
         if(message.EventId!=null) query=query.Where(e=>e.Id==message.EventId);
         else if(message.Action is "search" or "draft" && message.Prompt.Trim() is { Length:>0 } text) {
             query=AgentSearch.Apply(query,text);

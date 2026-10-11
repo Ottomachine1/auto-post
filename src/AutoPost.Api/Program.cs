@@ -92,12 +92,14 @@ api.MapAgent();
 api.MapDraftManagement();
 api.MapValueScoring();
 api.MapAnalytics();
+api.MapEventModeration();
 api.MapDelete("/session", async (HttpContext ctx) => { await ctx.SignOutAsync("session"); return Results.Ok(); });
 api.MapGet("/events", async (Store db, string? source, string? q, int? limit) =>
     (await Query(db, source, q, null).Take(Math.Clamp(limit ?? 50, 1, 200)).ToListAsync()).Select(EventDto));
-api.MapGet("/events/page", async (Store db, string? source, string? q, string? category, string? cursor, string? language, long? from, long? to, int? minScore, int? maxScore, string? scoreState) =>
+api.MapGet("/events/page", async (Store db, string? source, string? q, string? category, string? cursor, string? language, long? from, long? to, int? minScore, int? maxScore, string? scoreState, string? visibility) =>
 {
-    IQueryable<Event> query = EventFilters.Apply(db,Query(db, source, q, category),language,from,to,minScore,maxScore,scoreState).OrderByDescending(e=>e.PublishedAt).ThenByDescending(e=>e.Id);
+    if(visibility is not (null or "" or "visible" or "quarantined" or "all"))throw new ArgumentException("可见性筛选无效");
+    IQueryable<Event> query = EventFilters.Apply(db,Query(db, source, q, category,visibility),language,from,to,minScore,maxScore,scoreState).OrderByDescending(e=>e.PublishedAt).ThenByDescending(e=>e.Id);
     if (cursor != null)
     {
         var split = cursor.Split(':', 2);
@@ -119,6 +121,7 @@ api.MapPost("/events/{id}/analysis", async (string id, Store db) =>
     var cached = await db.Analyses.FirstOrDefaultAsync(a => a.EventId == id);
     if (cached != null) return Results.Content(cached.Result, "application/json");
     if (item.Demo) throw new InvalidOperationException("演示事件不调用真实模型");
+    if(item.IsQuarantined)throw new InvalidOperationException("情报已隔离，请恢复后分析");
     item.AnalysisStatus = "pending"; var job = await db.Enqueue("analyse", id); return Results.Accepted(value: new { taskId = job.Id, status = "queued" });
 });
 api.MapPost("/events/{id}/translation", async (string id, TranslationInput input, Store db, CancellationToken ct) =>
@@ -189,7 +192,7 @@ api.MapGet("/drafts", async (Store db) =>
 api.MapPost("/drafts", async (DraftInput input, Store db, Pipeline pipeline) =>
 {
     ValidateDraft(input); await MediaFiles.Validate(db, input.Media ?? []);
-    if (input.EventId != null && !await db.Events.AnyAsync(e => e.Id == input.EventId && e.Demo == Registration.Demo)) throw new ArgumentException("来源事件不存在");
+    if (input.EventId != null && !await db.Events.AnyAsync(e => e.Id == input.EventId && e.Demo == Registration.Demo&&!e.IsQuarantined)) throw new ArgumentException("来源事件不存在");
     var draft = pipeline.NewDraft(input.Content, input.Channels, input.EventId, Registration.Demo, input.Media); return Results.Ok(new { draft.Id, draft.Status });
 });
 api.MapPut("/drafts/{id}", async (string id, DraftInput input, Store db, Pipeline pipeline) =>
@@ -269,8 +272,8 @@ app.MapHub<EventsHub>("/hubs/events").RequireAuthorization();
 app.UseDefaultFiles(); app.UseStaticFiles(); app.MapFallbackToFile("index.html");
 await app.RunAsync();
 
-static IOrderedQueryable<Event> Query(Store db, string? source, string? q, string? category) => db.Events.AsNoTracking().Where(e => e.Demo == Registration.Demo && (source == null || source == "" || e.Source == source) && (category == null || category == "" || e.Category == category) && (q == null || q == "" || e.Title.ToLower().Contains(q.ToLower()) || e.Body.ToLower().Contains(q.ToLower()) || e.ChineseTitle.Contains(q) || e.ChineseBody.Contains(q))).OrderByDescending(e => e.PublishedAt).ThenByDescending(e => e.Id);
-static object EventDto(Event e) => new { e.Id, e.Source, source_id = e.SourceId, e.Title, e.Body, e.Url, e.Category, published_at = e.PublishedAt, collected_at = e.CollectedAt, e.Demo, e.GroupId, e.AnalysisStatus, e.Author, e.Language, e.OriginalSummary, e.Publisher, e.EvidenceKey, e.Relation, e.PublishedEstimated, e.ChineseTitle, e.ChineseBody, e.TranslationStatus, e.TranslationEngine };
+static IOrderedQueryable<Event> Query(Store db, string? source, string? q, string? category,string? visibility=null) => db.Events.AsNoTracking().Where(e => e.Demo == Registration.Demo && (visibility=="all"||visibility=="quarantined"&&e.IsQuarantined||(visibility==null||visibility==""||visibility=="visible")&&!e.IsQuarantined) && (source == null || source == "" || e.Source == source) && (category == null || category == "" || e.Category == category) && (q == null || q == "" || e.Title.ToLower().Contains(q.ToLower()) || e.Body.ToLower().Contains(q.ToLower()) || e.ChineseTitle.Contains(q) || e.ChineseBody.Contains(q))).OrderByDescending(e => e.PublishedAt).ThenByDescending(e => e.Id);
+static object EventDto(Event e) => new { e.Id, e.Source, source_id = e.SourceId, e.Title, e.Body, e.Url, e.Category, published_at = e.PublishedAt, collected_at = e.CollectedAt, e.Demo, e.GroupId, e.AnalysisStatus, e.Author, e.Language, e.OriginalSummary, e.Publisher, e.EvidenceKey, e.Relation, e.PublishedEstimated, e.ChineseTitle, e.ChineseBody, e.TranslationStatus, e.TranslationEngine,e.IsQuarantined,e.ModerationVersion,e.ModerationReason,e.QuarantinedAt };
 static async Task<Draft> GetDraft(Store db, string id) => await db.Drafts.SingleOrDefaultAsync(d => d.Id == id && d.DeletedAt == null && d.ArchivedAt == null && (d.Demo == Registration.Demo || d.Quarantined)) ?? throw new ArgumentException("草稿不存在或已归档删除");
 static void ValidateDraft(DraftInput input)
 {

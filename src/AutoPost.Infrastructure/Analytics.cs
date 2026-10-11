@@ -7,7 +7,7 @@ public static class Analytics
     public sealed record Count(string Key,int Value);
     public sealed record Bucket(long From,int Reports,int ScoredReports,double? AverageScore);
     public sealed record Channel(string Key,bool Configured,string Mode,int Deliveries,Count[] Statuses);
-    public sealed record Report(Window Window,int Reports,int AnalysedReports,int ScoredReports,double? AverageScore,Count[] Sources,Count[] Topics,Count[] Processing,Channel[] Channels,Bucket[] Timeline,int UnknownSentimentReports,long AsOf);
+    public sealed record Report(Window Window,int Reports,int AnalysedReports,int ScoredReports,double? AverageScore,Count[] Sources,Count[] Topics,Count[] Processing,Channel[] Channels,Bucket[] Timeline,int UnknownSentimentReports,int QuarantinedReports,long AsOf);
     public static Window Resolve(string? range,long? from,long? to,long now)
     {
         long start,end;
@@ -22,6 +22,7 @@ public static class Analytics
         await using var tx=await db.Database.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead,ct);
         var events=db.Events.AsNoTracking().Where(e=>e.Demo==Registration.Demo&&e.CollectedAt>=window.From&&e.CollectedAt<window.To);
         var reports=await events.CountAsync(ct);
+        var quarantined=await events.CountAsync(e=>e.IsQuarantined,ct);
         var analysed=await events.CountAsync(e=>db.Analyses.Any(a=>a.EventId==e.Id),ct);
         var sources=await events.GroupBy(e=>e.Source).OrderByDescending(g=>g.Count()).ThenBy(g=>g.Key).Select(g=>new Count(g.Key,g.Count())).ToArrayAsync(ct);
         var topics=await events.GroupBy(e=>e.Category).OrderByDescending(g=>g.Count()).ThenBy(g=>g.Key).Select(g=>new Count(g.Key,g.Count())).ToArrayAsync(ct);
@@ -38,6 +39,6 @@ public static class Analytics
         var channels=Connectors.Channels.Select(channel=>new Channel(channel,Connectors.Configured(channel),channel is "x" or "telegram" or "binance"?"api":"manual_export",deliveryCounts.Where(d=>d.Channel==channel).Sum(d=>d.Count),deliveryCounts.Where(d=>d.Channel==channel).Select(d=>new Count(d.Status,d.Count)).ToArray())).ToArray();
         await tx.CommitAsync(ct);
         // Existing model schema has no sentiment field; do not infer sentiment from importance or prose.
-        return new(window,reports,analysed,scoredCount,average,sources,topics,processing,channels,timeline,reports,Clock.Now);
+        return new(window,reports,analysed,scoredCount,average,sources,topics,processing,channels,timeline,reports,quarantined,Clock.Now);
     }
 }

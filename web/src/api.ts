@@ -34,6 +34,10 @@ export async function session() {
   return true;
 }
 export type EventItem = {
+  isQuarantined?:boolean;
+  moderationVersion?:number;
+  moderationReason?:string;
+  quarantinedAt?:number;
   chineseTitle?: string;
   chineseBody?: string;
   translationStatus?: string;

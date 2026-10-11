@@ -11,6 +11,10 @@ public static class Json
 public abstract class Entity { public string Id { get; set; } = Guid.NewGuid().ToString("N"); }
 public sealed class Event : Entity
 {
+    public bool IsQuarantined { get; set; }
+    public int ModerationVersion { get; set; }
+    public string ModerationReason { get; set; } = "";
+    public long? QuarantinedAt { get; set; }
     public string ChineseTitle { get; set; } = "";
     public string ChineseBody { get; set; } = "";
     public string TranslationStatus { get; set; } = "pending";
@@ -224,6 +228,7 @@ public static class Rules
     public static string? Rejection(Rule rule, Event item, int hour)
     {
         if (!rule.Enabled) return "规则未启用";
+        if (item.IsQuarantined) return "情报已隔离";
         if (item.Demo) return "演示数据不能自动发布";
         if (!Json.Read<string[]>(rule.Sources).Contains(item.Source)) return "来源不在白名单";
         var words = Json.Read<string[]>(rule.Keywords);
