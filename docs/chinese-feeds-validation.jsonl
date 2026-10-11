@@ -1,0 +1,12 @@
+{"id":"feed-127ccd1f6fe9283cd223","name":"\u5C11\u6570\u6D3E","httpStatus":200,"validation":"valid","error":null,"latestPublishedAt":1791598792,"enabled":true}
+{"id":"feed-13e7cf0f05841d1a1b73","name":"iThome \u53F0\u6E7E\u79D1\u6280","httpStatus":200,"validation":"failed","error":"invalid_xml","latestPublishedAt":null,"enabled":false}
+{"id":"feed-1821c8707b17765ea61e","name":"\u4E2D\u6587\u5168\u7403\u65F6\u4E8B","httpStatus":200,"validation":"valid","error":null,"latestPublishedAt":1791549371,"enabled":true}
+{"id":"feed-f065e991ff07c5d1a042","name":"\u4E2D\u6587\u52A0\u5BC6\u5E02\u573A","httpStatus":200,"validation":"valid","error":null,"latestPublishedAt":1791633600,"enabled":true}
+{"id":"feed-c62a58811181fc868b3b","name":"\u4E2D\u6587\u5B8F\u89C2\u91D1\u878D","httpStatus":200,"validation":"valid","error":null,"latestPublishedAt":1791519621,"enabled":true}
+{"id":"feed-562f19b00aaae4a37ea4","name":"\u4E2D\u6587AI\u52A8\u6001","httpStatus":200,"validation":"valid","error":null,"latestPublishedAt":1791639991,"enabled":true}
+{"id":"feed-f5e630346ece4bb91ba5","name":"\u4E2D\u6587\u653F\u7B56\u76D1\u7BA1","httpStatus":200,"validation":"valid","error":null,"latestPublishedAt":1791639480,"enabled":true}
+{"id":"feed-115935e3cabf606bc66b","name":"\u4E2D\u6587\u4E2D\u56FD\u7ECF\u6D4E","httpStatus":200,"validation":"failed","error":"stale_feed","latestPublishedAt":1781161200,"enabled":false}
+{"id":"feed-1f3b9209110c9a51541b","name":"IT\u4E4B\u5BB6","httpStatus":200,"validation":"valid","error":null,"latestPublishedAt":1791647290,"enabled":true}
+{"id":"feed-d99de66c0b1a6827597b","name":"36\u6C2A\u7EFC\u5408","httpStatus":null,"validation":"failed","error":"timeout","latestPublishedAt":null,"enabled":false}
+{"id":"feed-521a91062c9765166566","name":"36\u6C2A\u5FEB\u8BAF","httpStatus":null,"validation":"failed","error":"timeout","latestPublishedAt":null,"enabled":false}
+Candidates=11; valid=7; enabled=7

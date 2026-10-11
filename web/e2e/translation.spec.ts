@@ -1,0 +1,27 @@
+import {test,expect} from '@playwright/test';
+test('Translation only runs on request and preserves original',async({page})=>{
+ const item={id:'translation-ui-fixture',source:'demo',title:'Original market headline',body:'Original market report.',chineseTitle:'市场新闻中文标题',chineseBody:'市场报道的中文译文。',translationStatus:'completed',translationEngine:'argos-offline',category:'宏观',published_at:1791640000,collected_at:1791640001,demo:false,groupId:'translation-ui-fixture',analysisStatus:'pending',language:'en'};
+ await page.route('**/api/events/page*',route=>route.fulfill({json:{items:[item],nextCursor:null}}));
+ await page.route('**/api/events/translation-ui-fixture',route=>route.fulfill({json:{item,analysis:null,related:[],drafts:[]}}));
+ let requests=0;
+ const translated={id:'manual-cache-fixture',status:'completed',translatedTitle:item.chineseTitle,translatedBody:item.chineseBody};
+ await page.route('**/api/translation-languages',route=>route.fulfill({json:{targets:['zh'],configured:true}}));
+ await page.route('**/api/events/translation-ui-fixture/translation',route=>{requests++;return route.fulfill({json:translated});});
+ await page.route('**/api/translations/manual-cache-fixture',route=>route.fulfill({json:translated}));
+ await page.goto('/');await page.getByRole('button',{name:'连接后端',exact:true}).click();await page.getByLabel('管理访问令牌').fill('local-preview-token-at-least-32-characters');await page.getByRole('button',{name:'验证并连接'}).click();
+ await expect(page.getByText('实时连接',{exact:true}).first()).toBeVisible();
+ await expect(page.locator('.event h3')).toHaveCount(1);
+ await expect(page.locator('.event h3')).toHaveText(item.title);
+ expect(requests).toBe(0);
+ await page.locator('.event-main').click();
+ const detail=page.locator('.manual-translation:not(.compact)');
+ await expect(detail).toBeVisible();expect(requests).toBe(0);
+ await detail.getByRole('button',{name:'本地翻译',exact:true}).click();
+ await expect(page.getByText('本地机器翻译 · 请核对原文',{exact:true})).toBeVisible();
+ expect(requests).toBe(1);
+ await detail.getByRole('button',{name:'查看原文',exact:true}).click();
+ await expect(detail.getByText(item.body,{exact:true})).toBeVisible();
+ await detail.getByRole('button',{name:'查看译文',exact:true}).click();
+ await expect(detail.getByRole('heading',{name:item.chineseTitle})).toBeVisible();
+ expect(requests).toBe(1);
+});

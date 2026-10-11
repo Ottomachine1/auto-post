@@ -4,3 +4,13 @@ data
 __pycache__
 .pytest_cache
 .venv
+**/node_modules
+**/bin
+**/obj
+**/data
+**/wwwroot
+backups
+test-results
+playwright-report
+*.tar
+*.gz

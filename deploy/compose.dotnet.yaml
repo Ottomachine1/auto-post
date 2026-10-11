@@ -1,0 +1,86 @@
+name: auto-post
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: autopost
+      POSTGRES_DB: autopost
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U autopost -d autopost']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    mem_limit: 384m
+    command: [postgres, -c, max_wal_size=256MB, -c, shared_buffers=64MB]
+    networks: [atlas]
+  migrate:
+    image: auto-post-tools:${RELEASE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dotnet
+      target: tools
+    env_file: ../.env
+    command: [migrate]
+    depends_on:
+      postgres: {condition: service_healthy}
+    profiles: [tools]
+    networks: [atlas]
+  api:
+    image: auto-post-api:${RELEASE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dotnet
+      target: api
+    env_file: ../.env
+    ports: ['127.0.0.1:8090:8080']
+    volumes:
+      - keys:/keys
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+    mem_limit: 384m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [atlas]
+  worker:
+    image: auto-post-worker:${RELEASE_TAG:-local}
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.dotnet
+      target: worker
+    env_file: ../.env
+    environment:
+      X_OAUTH_STATE_PATH: /oauth/x.json
+    volumes:
+      - oauth:/oauth
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: unless-stopped
+    mem_limit: 384m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [atlas]
+volumes:
+  oauth:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_ROOT:-/mnt/storage/auto-post/state}/oauth
+  postgres-data:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_ROOT:-/mnt/storage/auto-post/state}/postgres
+  keys:
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_ROOT:-/mnt/storage/auto-post/state}/keys
+networks:
+  atlas:
+    ipam:
+      config: [{subnet: 172.30.86.0/24}]

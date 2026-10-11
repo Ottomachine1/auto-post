@@ -1,0 +1,23 @@
+# Intelligence analytics
+
+Authenticated read-only GET /api/analytics supports range=1h|24h|7d|30d|custom. Custom requires Unix-second from/to, positive past interval, maximum90days, [from,to). Event statistics use collectedAt; delivery statistics use deliveryCreatedAt. UI timestamps display Asia/Shanghai; custom datetime inputs use the browser timezone and are converted to Unix seconds.
+
+Repeatable-read snapshot queries aggregate in the database: total sampled reports, existing analyses, sources, original categories, processing states, time buckets, delivery channel/status. Latest persisted score per event is selected by CreatedAt thenId; missing scores are excluded from averages and coverage is shown. Reading never creates score snapshots or model/translation tasks. Timeline includes zero buckets. Raw stories and repeated score snapshots are not loaded into the browser.
+
+Channel metadata distinguishes configured credentials, missing credentials and manual export. Configuration is not successful integration evidence; zero records are not proof of zero news on an external platform. Sentiment is explicitly unavailable because the existing validated analysis schema contains no sentiment field. Sample volume is not global popularity, independent evidence or verified truth.
+
+Migration012 adds (Demo,CollectedAt) and (Demo,EventId,CreatedAt,Id) indexes, repeatably for MySQL and through normal EF migrations for PostgreSQL. No data is deleted and no new business tables are introduced.
+
+Initial local validation: PostgreSQL3 and pinned cloud MySQL3 targeted tests passed; desktop/mobile browser2 passed against the real API and seeded isolated PostgreSQL. Final channel-inclusive checks passed: PostgreSQL3, pinned cloud MySQL3, connected desktop/mobile analytics and theme browser4, plus production frontend build. All tests used isolated databases; no production rows were reset. Full CI and production deployment remain pending.
+
+Remaining analytics scope: cross-source event-group first-seen history, validated sentiment classifier/asset scope, actual value trend visualization, filtering/quarantine feedback and larger workload measurements. The current report is a first implementation, not completion of all V2 analytics requirements.
+
+Average-score trends currently use latest persisted score snapshots grouped by event collection time, not historical as-of score reconstruction. Dedicated value trend visualization and score freshness/coverage explanations require further work.
+
+Full CI12ff9b4: PostgreSQL and MySQL regressions passed; browser suite12 passed,2 last mobile logins timed out. The suite now has more login operations than the10/minute per-IP production limiter. Desktop/mobile suites now run with separate backend lifetimes; production limit is unchanged. Full rerun required before deployment.
+
+Local full browser rerun with CI server lifetimes: desktop7 + mobile7 passed (32.3s/32.1s). Migration012 applied twice to the restored isolated cloud database; verify-db still matched all18 tables (9100events,57scores). Production remains v0.6.6 pending final CI gate.
+
+CI38138038676 passed PostgreSQL88, MySQL88, desktop7 and mobile7, all images. v0.6.7 deployed2026-10-11; public fixed-range aggregation matched predeployment snapshot3791 reports/67 sources and all bucket/source/topic totals. Automatic publishing remains paused.
+
+Postdeployment v0.6.7 full backup restored successfully into isolated database: all18 table counts and hashes matched,9332 events.
