@@ -47,6 +47,22 @@ public sealed class Analysis : Entity
     public string Usage { get; set; } = "{}";
     public long CreatedAt { get; set; } = Clock.Now;
 }
+public sealed class Translation : Entity
+{
+    public string ContentHash { get; set; } = "";
+    public string Title { get; set; } = "";
+    public string Body { get; set; } = "";
+    public string SourceLanguage { get; set; } = "auto";
+    public string TargetLanguage { get; set; } = "zh";
+    public string TranslatedTitle { get; set; } = "";
+    public string TranslatedBody { get; set; } = "";
+    public string Status { get; set; } = "pending";
+    public string Engine { get; set; } = "";
+    public string? Error { get; set; }
+    public bool Demo { get; set; }
+    public long CreatedAt { get; set; } = Clock.Now;
+    public long UpdatedAt { get; set; } = Clock.Now;
+}
 public sealed class Draft : Entity
 {
     public string MediaJson { get; set; } = "[]";

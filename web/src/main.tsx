@@ -45,6 +45,7 @@ import { useRealtime } from "./realtime";
 import "./style.css";
 import {Composer,MediaGrid} from "./Composer";
 import {AgentPanel} from "./AgentPanel";
+import {ManualTranslation} from "./ManualTranslation";
 import type {Attachment} from "./api";
 
 const queryClient = new QueryClient({
@@ -613,10 +614,10 @@ function App() {
                                       <span className="sample">DEMO</span>
                                     )}
                                   </div>
-                                  <h3>{e.chineseTitle || e.title}</h3>
-                                  <p>{e.chineseBody || e.body}</p>
+                                  <h3>{e.title}</h3>
+                                  <p>{e.body}</p>
                                   <div className="event-footer">
-                                    <span>{e.translationStatus === "completed" ? "中文机译" : e.translationStatus === "native" ? "中文原文" : e.translationStatus === "failed" ? "翻译失败" : "待翻译"}</span>
+                                    <span>原文 · 按需翻译</span>
                                     <span>
                                       {statusName[e.analysisStatus] || "待分析"}
                                     </span>
@@ -626,6 +627,7 @@ function App() {
                                   </div>
                                 </div>
                               </button>
+                              <ManualTranslation key={e.id} eventId={e.id} title={e.title} body={e.body} compact />
                               <button
                                 className={
                                   "watch " +
@@ -706,11 +708,7 @@ function App() {
                       ) : (
                         <>
                           <span className="eyebrow">SOURCE CONTEXT</span>
-                          <h3>{selected.chineseTitle || selected.title}</h3>
-                          <p className="muted">{selected.chineseBody || selected.body}</p>
-                          <p className="meta">{selected.translationStatus === "completed" ? "本地机器翻译 · 请核对原文" : selected.translationStatus === "native" ? "中文原文" : selected.translationStatus === "failed" ? "翻译失败，当前展示原文" : "等待本地翻译，当前展示原文"}</p>
-                          {selected.translationStatus === "failed" && !selected.demo && <button onClick={() => action(() => api("/events/" + selected.id + "/translation", "POST"))}>重试本地翻译</button>}
-                          {selected.chineseTitle && selected.translationStatus !== "native" && <details><summary>查看原文</summary><h4>{selected.title}</h4><p>{selected.body}</p></details>}
+                          <ManualTranslation key={selected.id} eventId={selected.id} title={selected.title} body={selected.body} showOriginal />
                           <p className="meta">
                             {selected.publisher ||
                               sources.find((s) => s.id === selected.source)
@@ -1251,7 +1249,7 @@ function App() {
                     : "待连接或已离线"}
                 </p>
                 {connected && <Budget status={status.data} action={action} />}
-                {connected && <section aria-label="本地翻译状态"><h3>中文翻译</h3><p className="muted">{status.data?.translation?.configured ? "本地 CPU 翻译 · 无付费模型请求" : "本地翻译服务待配置"}</p><div className="chips">{status.data?.translation?.counts?.map((entry: {status:string;count:number}) => <span key={entry.status}>{({native:"中文原文",completed:"已翻译",pending:"待翻译",failed:"翻译失败"} as Record<string,string>)[entry.status] || entry.status}：{entry.count}</span>)}</div></section>}
+                {connected && <section aria-label="本地翻译状态"><h3>手动本地翻译</h3><p className="muted">{status.data?.translation?.configured ? "仅点击后翻译 · 本地 CPU · 无付费模型请求" : "本地翻译服务待配置"}</p><div className="chips">{status.data?.translation?.manualCounts?.map((entry: {status:string;count:number}) => <span key={entry.status}>{({native:"中文原文",completed:"已翻译",pending:"待翻译",failed:"翻译失败"} as Record<string,string>)[entry.status] || entry.status}：{entry.count}</span>)}</div></section>}
                 <div className="chips">
                   {status.data?.usage.map((b: any) => (
                     <span key={b.id}>

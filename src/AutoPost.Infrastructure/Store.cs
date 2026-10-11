@@ -13,6 +13,7 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
     public DbSet<AgentMessage> AgentMessages => Set<AgentMessage>();
     public DbSet<MediaAsset> Media => Set<MediaAsset>();
     public DbSet<Event> Events => Set<Event>();
+    public DbSet<Translation> Translations => Set<Translation>();
     public DbSet<Analysis> Analyses => Set<Analysis>();
     public DbSet<Draft> Drafts => Set<Draft>();
     public DbSet<DraftVersion> Versions => Set<DraftVersion>();
@@ -38,6 +39,7 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
         b.Entity<Event>().HasIndex(x => new { x.Demo, x.PublishedAt, x.Id });
         b.Entity<Event>().HasIndex(x => x.Fingerprint);
         b.Entity<Event>().HasIndex(x => x.GroupId);
+        b.Entity<Translation>().HasIndex(x => new { x.ContentHash, x.TargetLanguage, x.Demo }).IsUnique();
         b.Entity<Event>().HasIndex(x => new { x.TranslationStatus, x.CollectedAt });
         b.Entity<Analysis>().HasIndex(x => x.EventId).IsUnique();
         b.Entity<DraftVersion>().HasIndex(x => new { x.DraftId, x.Revision }).IsUnique();
@@ -78,6 +80,7 @@ public sealed class Store(DbContextOptions<Store> options) : DbContext(options)
         if (!MySql) { await Database.MigrateAsync(ct); return; }
         // MySQL schema is created only by the explicit deployment command.
         await Database.EnsureCreatedAsync(ct);
+        await ManualTranslationMigration.ApplyMySql(this, ct);
         if (!await Settings.AnyAsync(ct)) { Settings.Add(new Settings()); await SaveChangesAsync(ct); }
     }
     public async Task<Job> Enqueue(string kind, string target, CancellationToken ct = default)

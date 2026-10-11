@@ -2,6 +2,7 @@ import twitterText from "twitter-text";
 import {useRef,useState} from 'react';
 import {ImagePlus,Link,Smile,ArrowLeft,ArrowRight,X,Eye,Check} from 'lucide-react';
 import {api, type Attachment} from './api';
+import {ManualTranslation} from './ManualTranslation';
 
 function host(url:string){try{return new URL(url).hostname;}catch{return url;}}
 export function postLength(text:string) { return twitterText.parseTweet(text).weightedLength; }
@@ -33,6 +34,7 @@ export function Composer({content,onContent,media,onMedia,channels,onChannels,di
   function insert(value:string){const start=text.current?.selectionStart??content.length,end=text.current?.selectionEnd??start;onContent(content.slice(0,start)+value+content.slice(end));requestAnimationFrame(()=>{text.current?.focus();text.current?.setSelectionRange(start+value.length,start+value.length);});}
   function move(index:number,by:number){const copy=[...media];[copy[index],copy[index+by]]=[copy[index+by],copy[index]];onMedia(copy);}
   return <div className={'social-composer'+(drag?' dragging':'')} onDragOver={e=>{if(e.dataTransfer.types.includes('Files')){e.preventDefault();setDrag(true);}}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node))setDrag(false);}} onDrop={e=>{e.preventDefault();setDrag(false);void upload(Array.from(e.dataTransfer.files));}}>
+    {content.trim()&&!disabled&&<ManualTranslation body={content} onApply={onContent} />}
     <div className="composer-profile"><span className="profile-avatar">A</span><div><strong>我的创作</strong><span>普通推文 · 人工审核后发布</span></div><button type="button" className={preview?'active':''} onClick={()=>setPreview(!preview)}><Eye size={16}/>{preview?'返回编辑':'查看成稿'}</button></div>
     {preview?<article className="tweet-preview"><strong>我的账号 <Check size={14}/></strong><span className="meta"> @your_account · 刚刚</span><PostBody text={content||'你的想法会在这里呈现'}/><MediaGrid media={media}/><div className="post-engagement">回复　　转发　　喜欢　　浏览</div></article>:<>
       <textarea ref={text} aria-label="推文内容" placeholder="有什么新鲜事？" className="tweet-input" maxLength={10000} required={!media.length} value={content} disabled={uploading||disabled} onChange={e=>{onContent(e.target.value);setCard(null);}} onKeyDown={e=>{if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();e.currentTarget.form?.requestSubmit();}}} onPaste={e=>{const images=Array.from(e.clipboardData.files);if(images.length){e.preventDefault();void upload(images);}}}/>

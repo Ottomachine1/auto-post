@@ -7,19 +7,22 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 os.environ.setdefault("ARGOS_DEVICE_TYPE", "cpu")
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 import argostranslate.translate
+import argostranslate.package
 import langid
 
 LOCK = threading.Lock()
 LIMIT = 256_000  # JSON can escape each Chinese character as six ASCII bytes.
 
 
-def translate(text, source):
+def translate(text, source, target="zh"):
     if not text.strip():
         return ""
     languages = {language.code: language for language in argostranslate.translate.get_installed_languages()}
-    if source not in languages or "zh" not in languages:
+    if source == target:
+        return text
+    if source not in languages or target not in languages:
         raise ValueError("language_not_installed")
-    translator = languages[source].get_translation(languages["zh"])
+    translator = languages[source].get_translation(languages[target])
     # Preserve paragraphs; Argos splits sentences internally.
     return "\n".join(translator.translate(part) if part.strip() else part for part in text.split("\n"))
 
@@ -40,7 +43,8 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/health":
             return self.respond(404, {"error": "not_found"})
         languages = [language.code for language in argostranslate.translate.get_installed_languages()]
-        self.respond(200, {"engine": "argos-offline", "languages": languages, "ready": "en" in languages and "zh" in languages})
+        targets = sorted({p.to_code for p in argostranslate.package.get_installed_packages()})
+        self.respond(200, {"engine": "argos-offline", "languages": languages, "targets": targets, "ready": bool(targets)})
 
     def do_POST(self):
         if self.path != "/translate":
@@ -51,16 +55,17 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(413, {"error": "invalid_size"})
             data = json.loads(self.rfile.read(length))
             title, body, source = data["title"], data["body"], data.get("source", "en")
-            if not all(isinstance(value, str) for value in (title, body, source)) or len(title) > 1000 or len(body) > 25000:
+            target = data.get("target", "zh")
+            if not all(isinstance(value, str) for value in (title, body, source, target)) or len(title) > 1000 or len(body) > 25000:
                 return self.respond(400, {"error": "invalid_input"})
             if source == "auto":
                 source = langid.classify(body or title)[0]
-            if source == "zh":
-                return self.respond(200, {"title": title, "body": body, "engine": "argos-offline", "source": "zh"})
+            if source == target:
+                return self.respond(200, {"title": title, "body": body, "engine": "argos-offline", "source": source})
             if not LOCK.acquire(blocking=False):
                 return self.respond(429, {"error": "busy"})
             try:
-                translated_title, translated_body = translate(title, source), translate(body, source)
+                translated_title, translated_body = translate(title, source, target), translate(body, source, target)
             finally:
                 LOCK.release()
             if (title.strip() and not translated_title.strip()) or (body.strip() and not translated_body.strip()):

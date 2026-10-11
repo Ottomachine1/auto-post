@@ -74,28 +74,23 @@ public sealed class Pipeline(Store db, Connectors connectors)
                         var source = await db.Sources.FindAsync([job.Target], ct);
                         if (source is { Enabled: true }) await connectors.Collect(source, ct);
                         break;
-                    case "translate_manual":
-                        var translation = await db.Events.FindAsync([job.Target], ct);
-                        // Scheduling can observe pending just before another lane commits completion.
-                        // Refresh tracked candidates and skip already translated work after recovery.
-                        if (translation != null) await db.Entry(translation).ReloadAsync(ct);
-                        if (translation is { Demo: false, TranslationStatus: "pending" }) { await LocalTranslation.Run(translation, connectors.Factory, ct); db.Mark("translation", translation.Id); }
-                        break;
+                    case "translate_manual": await ManualTranslations.Execute(db, job.Target, connectors.Factory, ct); break;
                     case "analyse": await Analyse(job.Target, ct); break;
                     case "publish": await Publish(job.Target, ct); break;
                     case "agent": await new AgentService(db,connectors,this).Run(job,ct); break;
                 }
                 job.Status = "done"; job.Error = null;
             }
-            catch (RetryLater e) { job.Status = "pending"; job.DueAt = Clock.Now + e.Seconds; job.Error = "等待配额恢复"; }
+            catch (RetryLater e) { job.Status = job.Kind == "translate_manual" && job.Attempts >= 5 ? "failed" : "pending"; job.DueAt = Clock.Now + e.Seconds; job.Error = "等待配额或本地服务恢复"; if (job.Kind == "translate_manual" && await db.Translations.FindAsync([job.Target], ct) is { } queued) { queued.Status = job.Status; queued.Error = "本地翻译服务忙或暂不可用，请稍后重试"; } }
             catch (Exception error) when (!ct.IsCancellationRequested)
             {
                 job.Status = job.Attempts < 5 && job.Kind != "publish" ? "pending" : "failed";
+                if (job.Kind == "translate_manual" && error is HttpRequestException { StatusCode: >= System.Net.HttpStatusCode.BadRequest and < System.Net.HttpStatusCode.InternalServerError }) job.Status = "failed";
                 job.DueAt = Clock.Now + Math.Min(3600, 30 * (1 << Math.Min(job.Attempts, 6)));
                 job.Error = "执行失败，请检查配置、平台权限或响应格式";
                 if (job.Kind == "collect" && await db.Sources.FindAsync([job.Target], ct) is { } source)
                 { FeedReader.Failure(source, error); job.Status = "done"; source.NextRun = Math.Max(source.NextRun, job.DueAt); }
-                if (job.Kind == "translate_manual" && await db.Events.FindAsync([job.Target], ct) is { } translated) translated.TranslationStatus = job.Status == "failed" ? "failed" : "pending";
+                if (job.Kind == "translate_manual" && await db.Translations.FindAsync([job.Target], ct) is { } translated) { translated.Status = job.Status == "failed" ? "failed" : "pending"; translated.Error = "本地模型不可用、语言未安装或响应无效"; }
                 if (job.Kind == "analyse" && await db.Events.FindAsync([job.Target], ct) is { } item)
                     item.AnalysisStatus = job.Status == "failed" ? "failed" : "pending";
             }

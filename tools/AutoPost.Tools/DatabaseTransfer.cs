@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 // Explicit offline transfer. Stop both writers first. Existing rows are never overwritten.
 internal static class DatabaseTransfer
 {
-    private static readonly Type[] Tables = [typeof(Event),typeof(Analysis),typeof(Draft),typeof(DraftVersion),typeof(Delivery),typeof(Rule),typeof(Source),typeof(Job),typeof(Change),typeof(Audit),typeof(Settings),typeof(Budget),typeof(MediaAsset),typeof(AgentSession),typeof(AgentMessage)];
+    private static readonly Type[] Tables = [typeof(Event),typeof(Analysis),typeof(Draft),typeof(DraftVersion),typeof(Delivery),typeof(Rule),typeof(Source),typeof(Job),typeof(Change),typeof(Audit),typeof(Settings),typeof(Budget),typeof(MediaAsset),typeof(AgentSession),typeof(AgentMessage),typeof(Translation)];
     public static async Task Run(Store db,string command,string file)
     {
         var document = new Dictionary<string,JsonElement>();
@@ -20,6 +20,7 @@ internal static class DatabaseTransfer
             await File.WriteAllTextAsync(file,Json.Write(document));
         } else if(command=="import-db") {
             document=Json.Read<Dictionary<string,JsonElement>>(await File.ReadAllTextAsync(file));
+            if (!document.ContainsKey(nameof(Translation))) document[nameof(Translation)] = JsonSerializer.SerializeToElement(Array.Empty<Translation>(), Json.Options);
             await using var tx=await db.Database.BeginTransactionAsync(); await db.Lock();
             foreach(var type in Tables) {
                 var entities=(System.Collections.IEnumerable)JsonSerializer.Deserialize(document[type.Name],typeof(List<>).MakeGenericType(type),Json.Options)!;
@@ -36,7 +37,10 @@ internal static class DatabaseTransfer
                 await db.SaveChangesAsync();db.ChangeTracker.Clear();
             }
             await tx.CommitAsync();
-        } else document=Json.Read<Dictionary<string,JsonElement>>(await File.ReadAllTextAsync(file));
+        } else {
+            document=Json.Read<Dictionary<string,JsonElement>>(await File.ReadAllTextAsync(file));
+            if (!document.ContainsKey(nameof(Translation))) document[nameof(Translation)] = JsonSerializer.SerializeToElement(Array.Empty<Translation>(), Json.Options);
+        }
         var report=new Dictionary<string,object>();
         foreach(var type in Tables) {
             var target=command=="export-db" ? document[type.Name] : await Read(db,type);var expected=Canonical(document[type.Name]);var actual=Canonical(target);

@@ -1,4 +1,18 @@
-# 本地机器翻译（生产 v0.6.1，历史补译进行中）
+# 本地机器翻译
+
+## V2 当前策略：仅手动请求
+
+用户 V2 需求覆盖早期自动补译策略。采集、分页及打开详情不创建翻译任务；旧的自动任务在显式迁移时取消并保留记录，已保存原文和旧译文均保留。
+
+新增 `Translations` 缓存按原文内容 SHA-256、源语言、目标语言和演示模式隔离。修改正文生成新缓存；重复请求复用同一记录和活动任务。Worker 单 lane 执行，状态可查询，连续不可用最多尝试五次后进入失败，可人工重试。中文原文直接复制，不调用翻译服务。
+
+事件卡片、详情及编辑器提供显式按钮。详情可切换原文/译文；编辑器仅在用户选择“使用译文编辑”后替换输入。网络响应跨越内容修改或切换事件时，不把旧译文应用到新内容。
+
+接口：`POST /api/events/{id}/translation`（target）、`POST /api/translations`（title/body/target）、`GET /api/translations/{id}`、`GET /api/translation-languages`。目标菜单来自本地健康检查实际已安装目标语言与 `TRANSLATION_TARGETS` 的交集；默认 zh。服务不可达显示未就绪，不借用 SiliconFlow 翻译。
+
+迁移：PostgreSQL 009；MySQL 显式 `migrate` 增量创建表并记录版本9，不清库。备份工具包含第16张业务表 Translations，也支持旧15表备份按空翻译缓存恢复。新增功能目前为开发代码，尚未宣称生产部署。
+
+## v0.6.1 历史记录（自动策略已被上述手动策略取代）
 
 翻译独立于 SiliconFlow 分析和 Agent，不发送翻译请求到付费大模型。
 候选引擎为 Argos Translate（https://github.com/argosopentech/argos-translate），

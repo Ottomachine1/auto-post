@@ -18,14 +18,17 @@ def request(path, method="GET"):
 page = request("/events/page?q=Bitcoin")
 item = next(e for e in page["items"] if not e["demo"] and e.get("language", "").lower().startswith("en") and len(e["body"]) < 2000)
 original_title = item["title"]
-request("/events/" + item["id"] + "/translation", "POST")
+translation = request("/events/" + item["id"] + "/translation", "POST")
 for attempt in range(120):
-    item = request("/events/" + item["id"])["item"]
-    if item["translationStatus"] in ("completed", "failed"):
+    translation = request("/translations/" + translation["id"])
+    if translation["status"] in ("completed", "native", "failed"):
         break
     time.sleep(1)
-assert item["translationStatus"] == "completed", item["translationStatus"]
-assert item["chineseTitle"] and item["translationEngine"] == "argos-offline"
+assert translation["status"] == "completed", translation["status"]
+assert translation["translatedTitle"] and translation["engine"] == "argos-offline"
+item = request("/events/" + item["id"])["item"]
 assert item["title"] == original_title
-assert any("\u4e00" <= c <= "\u9fff" for c in item["chineseTitle"])
-print(json.dumps({"eventId": item["id"], "status": item["translationStatus"], "engine": item["translationEngine"], "originalPreserved": True, "chineseTitle": item["chineseTitle"]}, ensure_ascii=False))
+assert any("\u4e00" <= c <= "\u9fff" for c in translation["translatedTitle"])
+cached = request("/events/" + item["id"] + "/translation", "POST")
+assert cached["id"] == translation["id"] and cached["status"] == "completed"
+print(json.dumps({"eventId": item["id"], "status": translation["status"], "engine": translation["engine"], "originalPreserved": True, "cacheMatched": True, "chineseTitle": translation["translatedTitle"]}, ensure_ascii=False))

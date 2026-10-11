@@ -118,15 +118,14 @@ api.MapPost("/events/{id}/analysis", async (string id, Store db) =>
     if (item.Demo) throw new InvalidOperationException("演示事件不调用真实模型");
     item.AnalysisStatus = "pending"; var job = await db.Enqueue("analyse", id); return Results.Accepted(value: new { taskId = job.Id, status = "queued" });
 });
-api.MapPost("/events/{id}/translation", async (string id, Store db) =>
+api.MapPost("/events/{id}/translation", async (string id, TranslationInput input, Store db, CancellationToken ct) =>
 {
-    var item = await db.Events.SingleOrDefaultAsync(e => e.Id == id && !e.Demo && !Registration.Demo) ?? throw new ArgumentException("真实事件不存在");
-    if (item.TranslationStatus is "completed" or "native") return Results.Ok(new { status = item.TranslationStatus });
-    item.TranslationStatus = "pending";
-    var job = await db.Enqueue("translate_manual", id); job.Priority = 100; job.DueAt = Clock.Now;
-    db.Mark("translation_retry", id);
-    return Results.Accepted(value: new { taskId = job.Id, status = "queued" });
+    var item = await db.Events.SingleOrDefaultAsync(e => e.Id == id && e.Demo == Registration.Demo, ct) ?? throw new ArgumentException("事件不存在");
+    return Results.Ok(await ManualTranslations.Request(db, item.Title, item.Body, item.Language, input.Target, ct));
 });
+api.MapPost("/translations", async (TextTranslationInput input, Store db, CancellationToken ct) => Results.Ok(await ManualTranslations.Request(db, input.Title, input.Body, "auto", input.Target, ct)));
+api.MapGet("/translations/{id}", async (string id, Store db, CancellationToken ct) => await db.Translations.SingleOrDefaultAsync(t => t.Id == id && t.Demo == Registration.Demo, ct) is { } item ? Results.Ok(item) : Results.NotFound());
+api.MapGet("/translation-languages", (IHttpClientFactory factory, CancellationToken ct) => ManualTranslations.Languages(factory, ct));
 api.MapGet("/changes", async (Store db, long? after) => await db.Changes.AsNoTracking().Where(c => c.Id > (after ?? 0)).OrderBy(c => c.Id).Take(200).ToListAsync());
 api.MapGet("/stream", async (HttpContext ctx, IServiceScopeFactory scopes) =>
 {
@@ -154,7 +153,7 @@ api.MapGet("/status", async (Store db) => new
     xAuthorizationMode = XAuthorization.RefreshConfigured ? "oauth_refresh" : Connectors.Env("X_USER_ACCESS_TOKEN")!="" ? "static_token" : "unconfigured",
     channels = Connectors.Channels.Select(c => new { id = c, label = c, mode = c is "x" or "telegram" or "binance" ? "api" : "manual_export", configured = Connectors.Configured(c) }),
     events = await db.Events.CountAsync(e => e.Demo == Registration.Demo),
-    translation = new { configured = Connectors.Env("TRANSLATION_URL") != "", engine = "argos-offline", counts = await db.Events.Where(e => e.Demo == Registration.Demo).GroupBy(e => e.TranslationStatus).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync() },
+    translation = new { configured = Connectors.Env("TRANSLATION_URL") != "", engine = "argos-offline", policy = "manual-only", manualCounts = await db.Translations.Where(t => t.Demo == Registration.Demo).GroupBy(t => t.Status).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync(), counts = await db.Events.Where(e => e.Demo == Registration.Demo).GroupBy(e => e.TranslationStatus).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync() },
     queue = await db.Jobs.GroupBy(j => j.Status).Select(g => new { status = g.Key, count = g.Count() }).ToListAsync(),
     usage = await db.Budgets.Where(b => b.Id.EndsWith(Clock.Day)).ToListAsync()
 });
@@ -323,3 +322,6 @@ public partial class Program;
 public sealed record MediaInput(string Data);
 
 public sealed record LinkInput(string Url);
+
+public sealed record TranslationInput(string Target = "zh");
+public sealed record TextTranslationInput(string Body, string Target = "zh", string Title = "");

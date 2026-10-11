@@ -9,7 +9,7 @@
 |---|---|---|
 | 前端 | web：React/TypeScript/Vite、TanStack Query/Virtual、Radix、CSS；三栏情报、编辑器、规则、状态、悬浮 Agent | 继续复用组件；加入管理、Analytics 和 Agent 主页面 |
 | API/Worker | ASP.NET Core .NET 10；独立持久任务 Worker、数据库租约和分 lane 锁 | 新服务按职责拆文件，不引入额外消息框架 |
-| 数据库 | PostgreSQL 生产；EF 显式迁移 001–008；事件、分析、草稿版本、投递、任务、来源、审计和 Agent 表 | 加法迁移，部署前备份，保留旧字段和数据；云 MySQL 仍待用户独立核验 |
+| 数据库 | 云 MySQL 8.4 生产，v0.6.3 已完成用户授权 TOFU 的迁移；旧 PostgreSQL 保留 | 加法迁移，部署前备份，保留旧字段和数据；证书固定与恢复证据见 MYSQL-MIGRATION.md |
 | 采集 | RSS/Atom 条件请求、来源验证/退避；X 分页游标；87 候选、73 已启用（最近快照） | 来源适配继续复用；Truth/OKX 等无权限平台保持待接入 |
 | 去重 | 来源 ID、URL、指纹、标题相似度、可选向量；保留事件分组 | 中文分词/近似匹配改善；记录过滤阶段与理由，原文只隐藏或隔离 |
 | 翻译 | Argos CPU 本地服务，Events 中文缓存，translate lane；生产 v0.6.1 自动补译 | 用户新要求覆盖旧自动策略：取消自动排队；仅显式手动请求；目标语言和原文哈希缓存；保留已译内容 |
@@ -64,7 +64,7 @@ LLM 计划必须通过工具白名单和参数校验，新闻中的指令不构�
 
 ## 发布与回滚
 
-沿用 codex/dotnet-rebuild、PR2、指定服务器、PostgreSQL 和当前密钥存放方式。
+沿用 codex/dotnet-rebuild、PR2、指定服务器、云 MySQL 和当前密钥存放方式。
 模块分别测试并发布，数据库迁移单独执行；部署前后备份及隔离恢复验证。
 兼容旧 API 字段，不清库、不重置生产数据；回滚只回退应用，写入/发布记录必须先核对。
 自动发布默认暂停。无 X/Telegram/Truth/OKX 授权时清楚列为待接入。
