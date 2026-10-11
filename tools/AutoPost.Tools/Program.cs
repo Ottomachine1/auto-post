@@ -29,7 +29,7 @@ if (args[0] == "feed-catalog")
         var factory = Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IHttpClientFactory>(provider);
         await Parallel.ForEachAsync(sources, new ParallelOptions { MaxDegreeOfParallelism = 4 }, async (entry, ct) =>
         {
-            await using var checkDb = new Store(options); var source = await checkDb.Sources.SingleAsync(s => s.Id == entry.Id, ct);
+            await using var checkDb = new Store((DbContextOptions<Store>)Registration.Configure(new DbContextOptionsBuilder<Store>(), Registration.Connection).Options); var source = await checkDb.Sources.SingleAsync(s => s.Id == entry.Id, ct);
             var valid = await new FeedReader(factory).Validate(source, ct);
             source.Enabled = valid && args.Contains("enable-valid"); source.NextRun = Clock.Now;
             await checkDb.SaveChangesAsync(ct);
@@ -114,7 +114,7 @@ INSERT INTO "Events" SELECT 'bench-'||i,'benchmark',i::text,'Benchmark event '||
     var watch = System.Diagnostics.Stopwatch.StartNew();
     var samples = await Task.WhenAll(Enumerable.Range(0, 20).Select(async _ =>
     {
-        await using var scoped = new Store(options); var values = new List<double>();
+        await using var scoped = new Store((DbContextOptions<Store>)Registration.Configure(new DbContextOptionsBuilder<Store>(), Registration.Connection).Options); var values = new List<double>();
         for (var i = 0; i < 20; i++) { var sw = System.Diagnostics.Stopwatch.StartNew(); await scoped.Events.AsNoTracking().Where(e => e.Demo).OrderByDescending(e => e.PublishedAt).ThenByDescending(e => e.Id).Take(50).ToListAsync(); values.Add(sw.Elapsed.TotalMilliseconds); }
         return values;
     }));
